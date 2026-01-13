@@ -67,31 +67,37 @@ with tab_portfoy:
         df_p['Toplam'] = df_p[enstrumanlar].sum(axis=1)
         
         guncel = df_p.iloc[-1]
-        onceki = df_p.iloc[-2] if len(df_p) > 1 else guncel
         toplam_tl = guncel['Toplam']
 
-        # SADECE TOPLAM VARLIK METRİĞİ
-        st.metric("Toplam Varlık (TL)", f"{int(toplam_tl):,.0f}".replace(",", "."), f"{int(toplam_tl - onceki['Toplam']):,.0f}")
+        # TOPLAM VARLIK (Değişim metriği kaldırıldı)
+        st.metric("Toplam Varlık (TL)", f"{int(toplam_tl):,.0f}".replace(",", "."))
 
-        # SEÇENEKLİ DÖNEMSEL DEĞİŞİM
+        # SEÇENEKLİ DÖNEMSEL DEĞİŞİM (Akıllı Mantık)
         st.write("### ⏱️ Değişim Analizi")
-        periyotlar = {"1 Gün": 1, "1 Ay": 30, "3 Ay": 90, "6 Ay": 180, "1 Yıl": 365, "3 Yıl": 1095, "5 Yıl": 1825}
+        periyotlar = {"1 Gün": 1, "1 Ay": 30, "3 Ay": 90, "6 Ay": 180, "1 Yıl": 365}
         secilen_periyot = st.selectbox("Analiz Periyodu Seçin", list(periyotlar.keys()))
         
         gun_farki = periyotlar[secilen_periyot]
         hedef_tarih = guncel['tarih'] - timedelta(days=gun_farki)
-        gecmis_data = df_p[df_p['tarih'] <= hedef_tarih]
         
-        if not gecmis_data.empty:
+        # Seçilen günden önceki en yakın kaydı bul, yoksa mevcut en eski kaydı al
+        gecmis_data = df_p[df_p['tarih'] <= hedef_tarih]
+        if gecmis_data.empty and len(df_p) > 1:
+            gecmis_data = df_p.head(1) # Elindeki en eski kaydı baz al
+            st.caption(f"ℹ️ Seçilen periyot için yeterli geçmiş veri olmadığından, sistemdeki en eski kayıt ({gecmis_data.iloc[0]['tarih'].strftime('%d.%m.%Y')}) baz alındı.")
+        
+        if not gecmis_data.empty and len(df_p) > 1:
             eski_deger = gecmis_data.iloc[-1]['Toplam']
-            fark = toplam_tl - eski_deger
-            yuzde = (fark / eski_deger) * 100
-            st.metric(f"{secilen_periyot} Önceye Göre Değişim", f"{int(fark):,.0f} TL".replace(",", "."), f"%{yuzde:.2f}")
+            if eski_deger > 0:
+                fark = toplam_tl - eski_deger
+                yuzde = (fark / eski_deger) * 100
+                st.metric(f"{secilen_periyot} Değişimi", f"{int(fark):,.0f} TL".replace(",", "."), f"%{yuzde:.2f}")
         else:
-            st.warning("Seçilen dönem için yeterli geçmiş veri bulunmuyor.")
+            st.info("Kıyaslama yapabilmek için en az 2 farklı günlük kayıt gereklidir.")
 
         st.divider()
         # Enstrüman metrikleri
+        onceki = df_p.iloc[-2] if len(df_p) > 1 else guncel
         varlik_data = []
         for e in enstrumanlar:
             if guncel[e] > 0:
@@ -139,8 +145,6 @@ with tab_gelir:
         for col in ["Maaş", "Prim&Promosyon", "Yatırımlar", "Toplam"]:
             if col in df_g.columns: df_g[col] = pd.to_numeric(df_g[col], errors='coerce').fillna(0)
         df_g['tarih_tr'] = df_g['tarih'].dt.month.map(TR_AYLAR_TAM) + " " + df_g['tarih'].dt.year.astype(str)
-        
-        # GELİR ÇİZGİ GRAFİĞİ (EKLENDİ)
         fig_gl = px.line(df_g, x='tarih', y='Toplam', markers=True, title="Aylık Gelir Gelişimi")
         fig_gl.update_traces(customdata=df_g['tarih_tr'], hovertemplate="Dönem: %{customdata}<br>Gelir: %{y:,.0f}")
         fig_gl.update_xaxes(tickvals=df_g['tarih'], ticktext=[f"{TR_AYLAR_KISA.get(d.strftime('%b'))} {d.year}" for d in df_g['tarih']], title="Dönem")
