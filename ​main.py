@@ -22,14 +22,8 @@ except Exception as e:
 
 # --- 2. VERİ GİRİŞİ VE İKON TANIMLARI ---
 enstruman_bilgi = {
-    'Hisse Senedi': '📈', 
-    'Altın': '🟡', 
-    'Gümüş': '⚪', 
-    'Fon': '🏦',
-    'Döviz': '💵', 
-    'Kripto': '₿',  # Kutu hatası veren simgeyi standart BTC simgesiyle değiştirdik
-    'Mevduat': '💰', 
-    'BES': '🛡️'
+    'Hisse Senedi': '📈', 'Altın': '🟡', 'Gümüş': '⚪', 'Fon': '🏦',
+    'Döviz': '💵', 'Kripto': '₿', 'Mevduat': '💰', 'BES': '🛡️'
 }
 enstrumanlar = list(enstruman_bilgi.keys())
 
@@ -88,17 +82,22 @@ if data:
     with t2:
         st.subheader("Güncel Varlık Dağılımı")
         son_durum = df[enstrumanlar].iloc[-1]
-        pasta_df = pd.DataFrame({
-            'Enstrüman': [f"{enstruman_bilgi[e]} {e}" for e in son_durum.index if son_durum[e] > 0],
-            'Değer': [v for v in son_durum if v > 0]
-        })
         
-        if not pasta_df.empty:
-            # Plotly ile emojili ve interaktif grafik
-            fig = px.pie(pasta_df, values='Değer', names='Enstrüman', 
+        # Grafik verisi hazırlanırken isimleri sadeleştirdik
+        labels = [f"{enstruman_bilgi[e]} {e}" for e in son_durum.index if son_durum[e] > 0]
+        values = [v for v in son_durum if v > 0]
+        
+        if values:
+            # Plotly Pie: Sadece isim ve değer kullanarak "enstrüman=" yazısını kaldırdık
+            fig = px.pie(names=labels, values=values, 
                          hole=0.4, color_discrete_sequence=px.colors.qualitative.Pastel)
-            fig.update_traces(textinfo='percent+label')
-            fig.update_layout(margin=dict(t=30, b=0, l=0, r=0), height=450)
+            
+            # Hover (üzerine gelince) ve metin formatını sadeleştirdik
+            fig.update_traces(
+                textinfo='percent+label',
+                hovertemplate="<b>%{label}</b><br>Değer: %{value:,.0f} TL<br>Pay: %{percent}"
+            )
+            fig.update_layout(margin=dict(t=30, b=0, l=0, r=0), height=450, showlegend=False)
             st.plotly_chart(fig, use_container_width=True)
 
     st.divider()
@@ -110,8 +109,6 @@ if data:
     
     hedef_tarih = datetime.now() - timedelta(days=periyotlar[secim])
     gecmis_df = df[df['tarih'] <= hedef_tarih]
-    
-    # Esnek veri bulma mantığı
     baslangic = gecmis_df.iloc[-1] if not gecmis_df.empty else df.iloc[0]
     
     st.info(f"Dönem başı ({baslangic['tarih'].date()}): **{baslangic['Toplam']:,.0f} TL**")
@@ -127,7 +124,4 @@ if data:
             perf_cols[i % 4].metric(f"{enstruman_bilgi[e]} {e}", f"{v_yeni:,.0f} TL", "Yeni")
 
     st.divider()
-    with st.expander("📄 Tüm Kayıtları Listele"):
-        st.dataframe(df.sort_values('tarih', ascending=False), use_container_width=True)
-else:
-    st.info("💡 Başlamak için sol menüden ilk verinizi kaydedin.")
+    with st.expander("📄 Tüm Kay
