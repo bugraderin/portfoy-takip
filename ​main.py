@@ -102,8 +102,8 @@ with tab_portfoy:
             df_p['tarih_tr'] = df_p['tarih'].dt.day.astype(str) + " " + df_p['tarih'].dt.month.map(TR_AYLAR)
             fig_l = px.line(df_p, x='tarih', y='Toplam', markers=True, title="Toplam Varlık Seyri", custom_data=['tarih_tr'])
             fig_l.update_traces(hovertemplate="Tarih: %{customdata[0]}<br>Toplam: %{y:,.0f}")
-            # Yakınlaştırma ve kaydırma hariç diğerlerini kaldır
-            fig_l.update_layout(modebar_remove=['zoomIn2d', 'zoomOut2d', 'autoScale2d', 'resetScale2d', 'select2d', 'lasso2d', 'toImage'])
+            # Seçim kutusunu (box select) ve diğer araçları kaldır, sadece zoom ve pan kalsın
+            fig_l.update_layout(dragmode='pan', modebar_remove=['select2d', 'lasso2d', 'zoomIn2d', 'zoomOut2d', 'autoScale2d', 'resetScale2d', 'toImage'])
             st.plotly_chart(fig_l, use_container_width=True)
 
 # --- SEKME 2: GELİRLER ---
@@ -123,6 +123,7 @@ with tab_gelir:
     if data_g:
         df_g = pd.DataFrame(data_g)
         df_g['tarih'] = pd.to_datetime(df_g['tarih'], errors='coerce')
+        # Sütun isimlerini görseldeki gibi eşle
         for col in ["Maaş", "Prim&Promosyon", "Yatırımlar", "Toplam"]:
             if col in df_g.columns: df_g[col] = pd.to_numeric(df_g[col], errors='coerce').fillna(0)
         
@@ -135,8 +136,8 @@ with tab_gelir:
             df_g['tarih_tr'] = df_g['tarih'].dt.month.map(TR_AYLAR) + " " + df_g['tarih'].dt.year.astype(str)
             fig_gl = px.line(df_g, x='tarih', y='Toplam', markers=True, title="Aylık Gelir Gelişimi", custom_data=['tarih_tr'])
             fig_gl.update_traces(hovertemplate="Dönem: %{customdata[0]}<br>Gelir: %{y:,.0f}")
-            # Yakınlaştırma ve kaydırma hariç diğerlerini kaldır
-            fig_gl.update_layout(modebar_remove=['zoomIn2d', 'zoomOut2d', 'autoScale2d', 'resetScale2d', 'select2d', 'lasso2d', 'toImage'])
+            # Seçim kutusunu (box select) ve diğer araçları kaldır
+            fig_gl.update_layout(dragmode='pan', modebar_remove=['select2d', 'lasso2d', 'zoomIn2d', 'zoomOut2d', 'autoScale2d', 'resetScale2d', 'toImage'])
             st.plotly_chart(fig_gl, use_container_width=True)
 
 # --- SEKME 3: GİDERLER ---
@@ -145,7 +146,6 @@ with tab_gider:
     kalan_bakiye, limit = get_son_bakiye_ve_limit()
     st.info(f"💰 Güncel Kalan Bütçe: **{int(kalan_bakiye):,.0f}**")
     
-    # Gider kalemleri ve İkonları
     gider_ikonlari = {
         "Genel Giderler": "📦", "Market": "🛒", "Kira": "🏠", "Aidat": "🏢", 
         "Kredi Kartı": "💳", "Kredi": "🏦", "Eğitim": "🎓", "Araba": "🚗", 
@@ -188,10 +188,8 @@ with tab_gider:
         kats = list(gider_ikonlari.keys())
         for c in kats: 
             if c in df_gi.columns: df_gi[c] = pd.to_numeric(df_gi[c], errors='coerce').fillna(0)
-        
         top_gi = df_gi[kats].sum().reset_index()
         top_gi.columns = ['Kategori', 'Tutar']
-        # Pastada da ikonları göster
         top_gi['Etiket'] = top_gi['Kategori'].map(gider_ikonlari) + " " + top_gi['Kategori']
         st.plotly_chart(px.pie(top_gi[top_gi['Tutar']>0], values='Tutar', names='Etiket', hole=0.4, title="Toplam Gider Dağılımı"), use_container_width=True)
 
