@@ -6,8 +6,8 @@ from datetime import datetime, timedelta
 import plotly.express as px
 
 # --- SAYFA AYARLARI ---
-st.set_page_config(page_title="Finansal Yönetim Merkezi", layout="wide")
-st.title("🚀 Akıllı Portföy ve Bütçe Yönetimi")
+st.set_page_config(page_title="Finansal Yönetim Paneli", layout="wide")
+st.title("🚀 Akıllı Portföy ve Gider Takibi")
 
 # --- 1. GOOGLE SHEETS BAĞLANTISI ---
 scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
@@ -27,12 +27,13 @@ except Exception as e:
 # CSS: Artı/Eksi oklarını gizleme
 st.markdown("""<style> input::-webkit-outer-spin-button, input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; } input[type=number] { -moz-appearance: textfield; } </style>""", unsafe_allow_html=True)
 
-# --- YARDIMCI FONKSİYON: BÜTÇE HESAPLAMA ---
+# --- YARDIMCI FONKSİYONLAR ---
 def get_son_butce_durumu():
     try:
         data = ws_ayrilan.get_all_records()
         if data:
-            return float(data[-1]['Kalan']), float(data[-1]['Ayrılan Tutar'])
+            son = data[-1]
+            return float(son['Kalan']), float(son['Ayrılan Tutar'])
         return 0.0, 0.0
     except:
         return 0.0, 0.0
@@ -40,21 +41,19 @@ def get_son_butce_durumu():
 # --- 2. ANA SEKMELER ---
 tab_portfoy, tab_gelir, tab_gider, tab_ayrilan = st.tabs(["📊 Portföy Analizi", "💵 Gelirler", "💸 Giderler", "🛡️ Bütçe Planlama"])
 
-# --- SEKME 1: PORTFÖY (TÜM SÜRELER EKLENDİ) ---
+# --- SEKME 1: PORTFÖY ---
 with tab_portfoy:
     enstruman_bilgi = {'Hisse Senedi': '📈', 'Altın': '🟡', 'Gümüş': '⚪', 'Fon': '🏦', 'Döviz': '💵', 'Kripto': '₿', 'Mevduat': '💰', 'BES': '🛡️'}
     enstrumanlar = list(enstruman_bilgi.keys())
 
-    # Yan Menüden Veri Girişi
     with st.sidebar:
         st.header("📥 Portföy Güncelle")
         with st.form("p_form", clear_on_submit=True):
             p_in = {e: st.number_input(f"{enstruman_bilgi[e]} {e} (TL)", min_value=0.0, value=None, format="%.f") for e in enstrumanlar}
-            if st.form_submit_button("Kaydet"):
+            if st.form_submit_button("🚀 Kaydet"):
                 ws_portfoy.append_row([datetime.now().strftime('%Y-%m-%d')] + [p_in[e] or 0 for e in enstrumanlar], value_input_option='RAW')
                 st.rerun()
 
-    # Veri İşleme
     data_p = ws_portfoy.get_all_records()
     if data_p:
         df_p = pd.DataFrame(data_p)
@@ -73,10 +72,9 @@ with tab_portfoy:
             y_deg = (deg / df_p['Toplam'].iloc[-2]) * 100
             c2.metric("Günlük Değişim", f"{deg:,.0f} TL", f"%{y_deg:.2f}")
         
-        # PERFORMANS ANALİZİ (İSTEDİĞİN TÜM SÜRELER)
+        # PERFORMANS ANALİZİ
         st.divider()
         st.subheader("⏱️ Dönemsel Performans")
-        # 1 gün, 1-3-6-9 ay, 1-3-5 yıl
         periyotlar = {"1 Gün": 1, "1 Ay": 30, "3 Ay": 90, "6 Ay": 180, "9 Ay": 270, "1 Yıl": 365, "3 Yıl": 1095, "5 Yıl": 1825}
         secim = st.selectbox("Kıyaslama süresi:", list(periyotlar.keys()))
         
@@ -88,12 +86,17 @@ with tab_portfoy:
         b_yuzde = (t_fark / baslangic['Toplam'] * 100) if baslangic['Toplam'] > 0 else 0
         st.success(f"**{secim}** öncesine göre büyüme: **%{b_yuzde:.2f}** ({t_fark:,.0f} TL fark)")
 
-        # Grafikler
-        t_da, t_ge = st.tabs(["🥧 Dağılım", "📈 Gelişim"])
+        # GRAFİKLER
+        t_da, t_ge = st.tabs(["🥧 Varlık Dağılımı", "📈 Gelişim Grafiği"])
         with t_da:
             plot_df = pd.DataFrame([{'V': f"{enstruman_bilgi[e]} {e}", 'D': guncel[e]} for e in enstrumanlar if guncel[e] > 0]).sort_values('D', ascending=False)
-            fig = px.pie(plot_df, values='D', names='V', hole=0.5, color_discrete_sequence=px.colors.qualitative.Pastel)
-            st.plotly_chart(fig, use_container_width=True)
+            fig_pie = px.pie(plot_df, values='D', names='V', hole=0.5, color_discrete_sequence=px.colors.qualitative.Pastel)
+            st.plotly_chart(fig_pie, use_container_width=True)
+        with t_ge:
+            # Gelişim grafiği (Çizgi Grafik) geri eklendi
+            fig_line = px.line(df_p, x='tarih', y='Toplam', title='Toplam Varlık Gelişimi', markers=True)
+            fig_line.update_layout(xaxis_title="Tarih", yaxis_title="Toplam TL")
+            st.plotly_chart(fig_line, use_container_width=True)
 
 # --- SEKME 2: GELİRLER ---
 with tab_gelir:
@@ -105,22 +108,43 @@ with tab_gelir:
             ws_gelir.append_row([datetime.now().strftime('%Y-%m-%d')] + [g_in[k] or 0 for k in gelir_k], value_input_option='RAW')
             st.success("Kaydedildi!")
 
-# --- SEKME 3: GİDERLER (BÜTÇEDEN DÜŞER) ---
+# --- SEKME 3: GİDERLER (DROPDOWN VE BÜTÇE DÜŞÜŞÜ) ---
 with tab_gider:
     st.subheader("💸 Gider Girişi")
-    kalan, limit = get_son_butce_durumu()
-    st.info(f"💰 Kalan Bütçeniz: **{kalan:,.0f} TL** / (Limit: {limit:,.0f} TL)")
+    kalan_bakiye, limit = get_son_butce_durumu()
+    st.info(f"💰 Kalan Bütçeniz: **{kalan_bakiye:,.0f} TL** / (Ayrılan: {limit:,.0f} TL)")
     
-    gider_k = ["Genel Giderler", "Market", "Kira", "Aidat", "Kredi Kartı", "Kredi", "Eğitim", "Araba", "Seyahat", "Sağlık", "Çocuk", "Toplu Taşıma"]
     with st.form("gi_form", clear_on_submit=True):
-        c1, c2 = st.columns(2)
-        gi_in = {k: (c1 if i<6 else c2).number_input(f"{k} (TL)", min_value=0, value=None, format="%d") for i, k in enumerate(gider_k)}
+        col1, col2 = st.columns(2)
+        
+        # 1. Dropdown Menüler
+        with col1:
+            st.write("🔍 **Detaylı Seçimler**")
+            genel_tip = st.selectbox("Genel Gider Tipi", ["Sigara", "Kozmetik", "Kırtasiye", "Evcil Hayvan", "Giyim", "Eğlence", "Diğer"])
+            araba_tip = st.selectbox("Araba Gider Tipi", ["Benzin", "Bakım", "Diğer"])
+            kredi_tip = st.selectbox("Kredi Tipi", ["Banka Kredisi", "Öğrenim Kredisi", "Diğer"])
+        
+        # 2. Sayısal Girişler
+        gi_in = {}
+        gider_liste = ["Genel Giderler", "Market", "Kira", "Aidat", "Kredi Kartı", "Kredi", "Eğitim", "Araba", "Seyahat", "Sağlık", "Çocuk", "Toplu Taşıma"]
+        
+        for i, k in enumerate(gider_liste):
+            target = col1 if i % 2 == 0 else col2
+            gi_in[k] = target.number_input(f"{k} (TL)", min_value=0, value=None, format="%d")
+        
         if st.form_submit_button("Harcamayı Bütçeden Düş"):
-            toplam_h = sum([gi_in[k] or 0 for k in gider_k])
-            yeni_kalan = kalan - toplam_h
-            ws_gider.append_row([datetime.now().strftime('%Y-%m-%d')] + [gi_in[k] or 0 for k in gider_k], value_input_option='RAW')
-            # Bütçe sayfasını güncelle
-            ws_ayrilan.append_row([datetime.now().strftime('%Y-%m-%d'), limit, yeni_kalan, kalan], value_input_option='RAW')
+            toplam_h = sum([gi_in[k] or 0 for k in gider_liste])
+            yeni_kalan = kalan_bakiye - toplam_h
+            
+            # Not ekleyerek Sheets'e gönderiyoruz
+            not_metni = f"Genel:{genel_tip}, Araba:{araba_tip}, Kredi:{kredi_tip}"
+            
+            gi_row = [datetime.now().strftime('%Y-%m-%d')] + [gi_in[k] or 0 for k in gider_liste] + [not_metni]
+            ws_gider.append_row(gi_row, value_input_option='RAW')
+            
+            # Bütçe sayfasını güncelle (Limit Sabit, Kalan Düşer, Eski Kalan Devreden olur)
+            ws_ayrilan.append_row([datetime.now().strftime('%Y-%m-%d'), limit, yeni_kalan, kalan_bakiye], value_input_option='RAW')
+            
             st.success(f"Harcama kaydedildi. Kalan: {yeni_kalan} TL")
             st.rerun()
 
@@ -128,10 +152,12 @@ with tab_gider:
 with tab_ayrilan:
     st.subheader("🛡️ Limit Belirle")
     with st.form("a_form", clear_on_submit=True):
-        y_lim = st.number_input("Aylık Limit (Ayrılan Tutar)", min_value=0, value=None, format="%d")
-        dev = st.number_input("Devreden Tutar", min_value=0, value=None, format="%d")
+        y_lim = st.number_input("Yeni Aylık Limit (Ayrılan Tutar)", min_value=0, value=None, format="%d")
+        dev = st.number_input("Ekstra Devreden Tutar", min_value=0, value=None, format="%d")
+        
         if st.form_submit_button("Limiti Başlat"):
             total = (y_lim or 0) + (dev or 0)
+            # [tarih, Ayrılan Tutar, Kalan, Devreden]
             ws_ayrilan.append_row([datetime.now().strftime('%Y-%m-%d'), y_lim or 0, total, dev or 0], value_input_option='RAW')
             st.success(f"Bütçe başlatıldı: {total} TL")
             st.rerun()
