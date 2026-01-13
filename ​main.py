@@ -27,10 +27,12 @@ try:
 except Exception as e:
     st.error(f"Bağlantı Hatası: {e}"); st.stop()
 
-# CSS Düzenlemeleri
+# CSS Düzenlemeleri (Mobil Uyumluluk Dahil)
 st.markdown("""<style>
     [data-testid="stMetricValue"] { font-size: 18px !important; }
     div[data-testid="stMetric"] { background-color: #f8f9fa; padding: 10px; border-radius: 8px; border: 1px solid #eee; }
+    /* Mobilde tabların kaydırılabilir olması için */
+    div[data-testid="stTabBar"] { overflow-x: auto; }
     </style>""", unsafe_allow_html=True)
 
 def get_son_bakiye_ve_limit():
@@ -69,7 +71,7 @@ with tab_portfoy:
         guncel = df_p.iloc[-1]
         toplam_tl = guncel['Toplam']
 
-        # TOPLAM VARLIK (Değişim metriği kaldırıldı)
+        # TOPLAM VARLIK
         st.metric("Toplam Varlık (TL)", f"{int(toplam_tl):,.0f}".replace(",", "."))
 
         # SEÇENEKLİ DÖNEMSEL DEĞİŞİM (Akıllı Mantık)
@@ -80,11 +82,11 @@ with tab_portfoy:
         gun_farki = periyotlar[secilen_periyot]
         hedef_tarih = guncel['tarih'] - timedelta(days=gun_farki)
         
-        # Seçilen günden önceki en yakın kaydı bul, yoksa mevcut en eski kaydı al
+        # Seçilen günden önceki kaydı bul, yoksa en eski kaydı al
         gecmis_data = df_p[df_p['tarih'] <= hedef_tarih]
         if gecmis_data.empty and len(df_p) > 1:
-            gecmis_data = df_p.head(1) # Elindeki en eski kaydı baz al
-            st.caption(f"ℹ️ Seçilen periyot için yeterli geçmiş veri olmadığından, sistemdeki en eski kayıt ({gecmis_data.iloc[0]['tarih'].strftime('%d.%m.%Y')}) baz alındı.")
+            gecmis_data = df_p.head(1)
+            st.caption(f"ℹ️ {secilen_periyot} öncesine ait kayıt bulunamadı. Sistemdeki en eski kayıt ({gecmis_data.iloc[0]['tarih'].strftime('%d.%m.%Y')}) baz alınarak hesaplandı.")
         
         if not gecmis_data.empty and len(df_p) > 1:
             eski_deger = gecmis_data.iloc[-1]['Toplam']
@@ -93,7 +95,7 @@ with tab_portfoy:
                 yuzde = (fark / eski_deger) * 100
                 st.metric(f"{secilen_periyot} Değişimi", f"{int(fark):,.0f} TL".replace(",", "."), f"%{yuzde:.2f}")
         else:
-            st.info("Kıyaslama yapabilmek için en az 2 farklı günlük kayıt gereklidir.")
+            st.info("Kıyaslama yapabilmek için en az iki farklı güne ait veri girişi gereklidir.")
 
         st.divider()
         # Enstrüman metrikleri
@@ -104,6 +106,7 @@ with tab_portfoy:
                 degisim = guncel[e] - onceki[e]
                 yuzde = (degisim / onceki[e] * 100) if onceki[e] > 0 else 0
                 varlik_data.append({'Cins': e, 'Tutar': guncel[e], 'Yüzde': yuzde, 'Icon': enstruman_bilgi[e]})
+        
         df_v = pd.DataFrame(varlik_data).sort_values(by="Tutar", ascending=False)
         cols = st.columns(4)
         for i, (index, row) in enumerate(df_v.iterrows()):
@@ -145,6 +148,8 @@ with tab_gelir:
         for col in ["Maaş", "Prim&Promosyon", "Yatırımlar", "Toplam"]:
             if col in df_g.columns: df_g[col] = pd.to_numeric(df_g[col], errors='coerce').fillna(0)
         df_g['tarih_tr'] = df_g['tarih'].dt.month.map(TR_AYLAR_TAM) + " " + df_g['tarih'].dt.year.astype(str)
+        
+        # GELİR ÇİZGİ GRAFİĞİ
         fig_gl = px.line(df_g, x='tarih', y='Toplam', markers=True, title="Aylık Gelir Gelişimi")
         fig_gl.update_traces(customdata=df_g['tarih_tr'], hovertemplate="Dönem: %{customdata}<br>Gelir: %{y:,.0f}")
         fig_gl.update_xaxes(tickvals=df_g['tarih'], ticktext=[f"{TR_AYLAR_KISA.get(d.strftime('%b'))} {d.year}" for d in df_g['tarih']], title="Dönem")
@@ -173,9 +178,11 @@ with tab_gider:
         kats = list(gider_ikonlari.keys())
         for c in kats:
             if c in df_gi.columns: df_gi[c] = pd.to_numeric(df_gi[c], errors='coerce').fillna(0)
+        
         top_gi = df_gi[kats].sum().reset_index()
         top_gi.columns = ['Kategori', 'Tutar']
         top_gi['Etiket'] = top_gi['Kategori'].map(lambda x: f"{gider_ikonlari.get(x, '')} {x}")
+        
         if top_gi['Tutar'].sum() > 0:
             st.divider()
             fig_g_pie = px.pie(top_gi[top_gi['Tutar']>0], values='Tutar', names='Etiket', hole=0.4, title="Toplam Gider Dağılımı", color_discrete_sequence=px.colors.qualitative.Pastel)
