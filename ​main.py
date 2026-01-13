@@ -83,21 +83,28 @@ if data:
         st.subheader("Güncel Varlık Dağılımı")
         son_durum = df[enstrumanlar].iloc[-1]
         
-        # Grafik verisi hazırlanırken isimleri sadeleştirdik
         labels = [f"{enstruman_bilgi[e]} {e}" for e in son_durum.index if son_durum[e] > 0]
         values = [v for v in son_durum if v > 0]
         
         if values:
-            # Plotly Pie: Sadece isim ve değer kullanarak "enstrüman=" yazısını kaldırdık
             fig = px.pie(names=labels, values=values, 
                          hole=0.4, color_discrete_sequence=px.colors.qualitative.Pastel)
             
-            # Hover (üzerine gelince) ve metin formatını sadeleştirdik
+            # YASLANMA DÜZELTME: textposition='inside' metni dilimlerin içine alır, 
+            # insidetextorientation='horizontal' metni her zaman düz okutur.
             fig.update_traces(
                 textinfo='percent+label',
+                textposition='inside', 
+                insidetextorientation='horizontal',
                 hovertemplate="<b>%{label}</b><br>Değer: %{value:,.0f} TL<br>Pay: %{percent}"
             )
-            fig.update_layout(margin=dict(t=30, b=0, l=0, r=0), height=450, showlegend=False)
+            
+            # Grafiğin etrafındaki boşluğu artırarak metinlerin sıkışmasını engelledik
+            fig.update_layout(
+                margin=dict(t=50, b=50, l=50, r=50), 
+                height=500, 
+                showlegend=False
+            )
             st.plotly_chart(fig, use_container_width=True)
 
     st.divider()
