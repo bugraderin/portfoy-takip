@@ -8,11 +8,9 @@ import plotly.express as px
 # --- SAYFA AYARLARI ---
 st.set_page_config(page_title="Finansal Takip", layout="wide")
 
-# Türkçe Ay ve Gün Sözlüğü (Grafik Etiketleri İçin)
-TR_AYLAR_KISA = {
-    'Jan': 'Oca', 'Feb': 'Şub', 'Mar': 'Mar', 'Apr': 'Nis', 'May': 'May', 'Jun': 'Haz',
-    'Jul': 'Tem', 'Aug': 'Ağu', 'Sep': 'Eyl', 'Oct': 'Eki', 'Nov': 'Kas', 'Dec': 'Ara'
-}
+# Türkçe Ay Sözlükleri
+TR_AYLAR_KISA = {'Jan': 'Oca', 'Feb': 'Şub', 'Mar': 'Mar', 'Apr': 'Nis', 'May': 'May', 'Jun': 'Haz',
+                'Jul': 'Tem', 'Aug': 'Ağu', 'Sep': 'Eyl', 'Oct': 'Eki', 'Nov': 'Kas', 'Dec': 'Ara'}
 TR_AYLAR_TAM = {1: "Ocak", 2: "Şubat", 3: "Mart", 4: "Nisan", 5: "Mayıs", 6: "Haziran", 
                 7: "Temmuz", 8: "Ağustos", 9: "Eylül", 10: "Ekim", 11: "Kasım", 12: "Aralık"}
 
@@ -31,16 +29,12 @@ except Exception as e:
     st.error(f"Bağlantı Hatası: {e}")
     st.stop()
 
-# CSS: Metrik ve Görsel Düzenleme
-st.markdown("""
-    <style>
+# CSS Düzenlemeleri
+st.markdown("""<style>
     [data-testid="stMetricValue"] { font-size: 18px !important; }
-    [data-testid="stMetricLabel"] { font-size: 14px !important; }
     div[data-testid="stMetric"] { background-color: #f8f9fa; padding: 10px; border-radius: 8px; border: 1px solid #eee; }
-    </style>
-    """, unsafe_allow_html=True)
+    </style>""", unsafe_allow_html=True)
 
-# --- YARDIMCI FONKSİYONLAR ---
 def get_son_bakiye_ve_limit():
     try:
         data = ws_ayrilan.get_all_records()
@@ -50,23 +44,11 @@ def get_son_bakiye_ve_limit():
         return 0.0, 0.0
     except: return 0.0, 0.0
 
-def turkcelestir_eksen(fig):
-    """Grafik eksenindeki İngilizce ayları Türkçe yapar."""
-    fig.update_xaxes(
-        ticktext=[f"{d.day} {TR_AYLAR_KISA.get(d.strftime('%b'), d.strftime('%b'))}" for d in df_p['tarih']],
-        tickvals=df_p['tarih']
-    )
-    return fig
-
-# --- ANA SEKMELER ---
 tab_portfoy, tab_gelir, tab_gider, tab_ayrilan = st.tabs(["📊 Portföy", "💵 Gelirler", "💸 Giderler", "🛡️ Bütçe"])
 
 # --- SEKME 1: PORTFÖY ---
 with tab_portfoy:
-    enstruman_bilgi = {
-        'Hisse Senedi': '📈', 'Altın': '🟡', 'Gümüş': '⚪', 'Fon': '🏦', 
-        'Döviz': '💵', 'Kripto': '₿', 'Mevduat': '💰', 'BES': '🛡️'
-    }
+    enstruman_bilgi = {'Hisse Senedi': '📈', 'Altın': '🟡', 'Gümüş': '⚪', 'Fon': '🏦', 'Döviz': '💵', 'Kripto': '₿', 'Mevduat': '💰', 'BES': '🛡️'}
     enstrumanlar = list(enstruman_bilgi.keys())
 
     with st.sidebar:
@@ -81,46 +63,22 @@ with tab_portfoy:
     if data_p:
         df_p = pd.DataFrame(data_p)
         df_p['tarih'] = pd.to_datetime(df_p['tarih'], errors='coerce')
-        df_p = df_p.dropna(subset=['tarih'])
+        df_p = df_p.dropna(subset=['tarih']).sort_values('tarih')
         for col in enstrumanlar: df_p[col] = pd.to_numeric(df_p[col], errors='coerce').fillna(0)
         df_p['Toplam'] = df_p[enstrumanlar].sum(axis=1)
-        df_p = df_p.sort_values('tarih')
         
         guncel = df_p.iloc[-1]
-        onceki = df_p.iloc[-2] if len(df_p) > 1 else guncel
-        st.metric("Toplam Varlık", f"{int(guncel['Toplam']):,.0f}".replace(",", "."), f"{int(guncel['Toplam'] - onceki['Toplam']):,.0f}")
-        
-        varlik_data = []
-        for e in enstrumanlar:
-            if guncel[e] > 0:
-                degisim = guncel[e] - onceki[e]
-                yuzde = (degisim / onceki[e] * 100) if onceki[e] > 0 else 0
-                varlik_data.append({'Cins': e, 'Tutar': guncel[e], 'Yüzde': yuzde, 'Icon': enstruman_bilgi[e]})
-        
-        df_v = pd.DataFrame(varlik_data).sort_values(by="Tutar", ascending=False)
-        cols = st.columns(4)
-        for i, (index, row) in enumerate(df_v.iterrows()):
-            with cols[i % 4]:
-                st.metric(f"{row['Icon']} {row['Cins']}", f"{int(row['Tutar']):,.0f}".replace(",", "."), f"%{row['Yüzde']:.2f}")
+        st.metric("Toplam Varlık", f"{int(guncel['Toplam']):,.0f}".replace(",", "."))
 
-        st.divider()
         sub_tab1, sub_tab2 = st.tabs(["🥧 Varlık Dağılımı", "📈 Gelişim Analizi"])
-        with sub_tab1:
-            df_v['Etiket'] = df_v['Icon'] + " " + df_v['Cins']
-            fig_p = px.pie(df_v, values='Tutar', names='Etiket', hole=0.4, color_discrete_sequence=px.colors.qualitative.Pastel)
-            st.plotly_chart(fig_p, use_container_width=True)
         with sub_tab2:
-            # Grafik ve Manuel Türkçe Tarih Etiketleri
-            df_p['tarih_etiket'] = df_p['tarih'].dt.day.astype(str) + " " + df_p['tarih'].dt.month.map(TR_AYLAR_TAM)
+            # Türkçe Tarih Etiketleri Oluşturma
+            df_p['tarih_tr'] = df_p['tarih'].dt.day.astype(str) + " " + df_p['tarih'].dt.month.map(TR_AYLAR_TAM)
             fig_l = px.line(df_p, x='tarih', y='Toplam', markers=True, title="Toplam Varlık Seyri")
             
-            # Hover ve Eksen Düzenleme
-            fig_l.update_traces(customdata=df_p['tarih_etiket'], hovertemplate="Tarih: %{customdata}<br>Toplam: %{y:,.0f}")
-            fig_l.update_xaxes(
-                tickvals=df_p['tarih'],
-                ticktext=[f"{d.day} {TR_AYLAR_KISA.get(d.strftime('%b'))}" for d in df_p['tarih']],
-                title="Tarih"
-            )
+            # Kare seçimi kapatma ve Türkçe ayarları uygulama
+            fig_l.update_traces(customdata=df_p['tarih_tr'], hovertemplate="Tarih: %{customdata}<br>Toplam: %{y:,.0f}")
+            fig_l.update_xaxes(tickvals=df_p['tarih'], ticktext=[f"{d.day} {TR_AYLAR_KISA.get(d.strftime('%b'))}" for d in df_p['tarih']], title="Tarih")
             fig_l.update_layout(dragmode='pan', modebar_remove=['select2d', 'lasso2d', 'zoomIn2d', 'zoomOut2d', 'autoScale2d', 'resetScale2d', 'toImage'])
             st.plotly_chart(fig_l, use_container_width=True, config={'scrollZoom': True})
 
@@ -144,78 +102,40 @@ with tab_gelir:
         for col in ["Maaş", "Prim&Promosyon", "Yatırımlar", "Toplam"]:
             if col in df_g.columns: df_g[col] = pd.to_numeric(df_g[col], errors='coerce').fillna(0)
         
-        g_sub1, g_sub2 = st.tabs(["🥧 Dağılım", "📈 Aylık Seyir"])
-        with g_sub1:
-            son_g = df_g.iloc[-1]
-            g_pie_df = pd.DataFrame({'Kategori': ["Maaş", "Prim & Promosyon", "Yatırımlar"], 'Tutar': [son_g.get("Maaş", 0), son_g.get("Prim&Promosyon", 0), son_g.get("Yatırımlar", 0)]})
-            st.plotly_chart(px.pie(g_pie_df[g_pie_df['Tutar']>0], values='Tutar', names='Kategori', hole=0.4), use_container_width=True)
-        with g_sub2:
-            df_g['tarih_etiket'] = df_g['tarih'].dt.month.map(TR_AYLAR_TAM) + " " + df_g['tarih'].dt.year.astype(str)
-            fig_gl = px.line(df_g, x='tarih', y='Toplam', markers=True, title="Aylık Gelir Gelişimi")
-            
-            fig_gl.update_traces(customdata=df_g['tarih_etiket'], hovertemplate="Dönem: %{customdata}<br>Gelir: %{y:,.0f}")
-            fig_gl.update_xaxes(
-                tickvals=df_g['tarih'],
-                ticktext=[f"{TR_AYLAR_KISA.get(d.strftime('%b'))} {d.year}" for d in df_g['tarih']],
-                title="Dönem"
-            )
-            fig_gl.update_layout(dragmode='pan', modebar_remove=['select2d', 'lasso2d', 'zoomIn2d', 'zoomOut2d', 'autoScale2d', 'resetScale2d', 'toImage'])
-            st.plotly_chart(fig_gl, use_container_width=True, config={'scrollZoom': True})
+        df_g['tarih_tr'] = df_g['tarih'].dt.month.map(TR_AYLAR_TAM) + " " + df_g['tarih'].dt.year.astype(str)
+        fig_gl = px.line(df_g, x='tarih', y='Toplam', markers=True, title="Aylık Gelir Gelişimi")
+        fig_gl.update_traces(customdata=df_g['tarih_tr'], hovertemplate="Dönem: %{customdata}<br>Gelir: %{y:,.0f}")
+        fig_gl.update_xaxes(tickvals=df_g['tarih'], ticktext=[f"{TR_AYLAR_KISA.get(d.strftime('%b'))} {d.year}" for d in df_g['tarih']], title="Dönem")
+        fig_gl.update_layout(dragmode='pan', modebar_remove=['select2d', 'lasso2d', 'zoomIn2d', 'zoomOut2d', 'autoScale2d', 'resetScale2d', 'toImage'])
+        st.plotly_chart(fig_gl, use_container_width=True, config={'scrollZoom': True})
 
-# --- SEKME 3: GİDERLER ---
+# --- SEKME 3: GİDERLER (İKONLAR KORUNDU) ---
 with tab_gider:
     st.subheader("💸 Gider Yönetimi")
     kalan_bakiye, limit = get_son_bakiye_ve_limit()
     st.info(f"💰 Güncel Kalan Bütçe: **{int(kalan_bakiye):,.0f}**")
-    
-    gider_ikonlari = {
-        "Genel Giderler": "📦", "Market": "🛒", "Kira": "🏠", "Aidat": "🏢", 
-        "Kredi Kartı": "💳", "Kredi": "🏦", "Eğitim": "🎓", "Araba": "🚗", 
-        "Seyahat": "✈️", "Sağlık": "🏥", "Çocuk": "👶", "Toplu Taşıma": "🚌"
-    }
+    gider_ikonlari = {"Genel Giderler": "📦", "Market": "🛒", "Kira": "🏠", "Aidat": "🏢", "Kredi Kartı": "💳", "Kredi": "🏦", "Eğitim": "🎓", "Araba": "🚗", "Seyahat": "✈️", "Sağlık": "🏥", "Çocuk": "👶", "Toplu Taşıma": "🚌"}
     
     with st.form("gi_form", clear_on_submit=True):
-        c1, c2, c3 = st.columns(3)
-        genel = c1.number_input(f"{gider_ikonlari['Genel Giderler']} Genel Giderler", min_value=0, value=None)
-        market = c2.number_input(f"{gider_ikonlari['Market']} Market", min_value=0, value=None)
-        kira = c3.number_input(f"{gider_ikonlari['Kira']} Kira", min_value=0, value=None)
-        c4, c5, c6 = st.columns(3)
-        aidat = c4.number_input(f"{gider_ikonlari['Aidat']} Aidat", min_value=0, value=None)
-        kk = c5.number_input(f"{gider_ikonlari['Kredi Kartı']} Kredi Kartı", min_value=0, value=None)
-        kredi = c6.number_input(f"{gider_ikonlari['Kredi']} Kredi", min_value=0, value=None)
-        c7, c8, c9 = st.columns(3)
-        egitim = c7.number_input(f"{gider_ikonlari['Eğitim']} Eğitim", min_value=0, value=None)
-        araba = c8.number_input(f"{gider_ikonlari['Araba']} Araba", min_value=0, value=None)
-        seyahat = c9.number_input(f"{gider_ikonlari['Seyahat']} Seyahat", min_value=0, value=None)
-        c10, c11, c12 = st.columns(3)
-        saglik = c10.number_input(f"{gider_ikonlari['Sağlık']} Sağlık", min_value=0, value=None)
-        cocuk = c11.number_input(f"{gider_ikonlari['Çocuk']} Çocuk", min_value=0, value=None)
-        ulashim = c12.number_input(f"{gider_ikonlari['Toplu Taşıma']} Toplu Taşıma", min_value=0, value=None)
+        cols = st.columns(3)
+        inputs = {}
+        for i, (isim, ikon) in enumerate(gider_ikonlari.items()):
+            inputs[isim] = cols[i % 3].number_input(f"{ikon} {isim}", min_value=0, value=None)
         
         if st.form_submit_button("✅ Harcamayı Kaydet"):
-            kalemler = [genel, market, kira, aidat, kk, kredi, egitim, araba, seyahat, saglik, cocuk, ulashim]
-            toplam_h = sum([x or 0 for x in kalemler])
+            toplam_h = sum([v or 0 for v in inputs.values()])
             if toplam_h > 0:
                 yeni_kalan = kalan_bakiye - toplam_h
-                ws_gider.append_row([datetime.now().strftime('%Y-%m-%d')] + [x or 0 for x in kalemler], value_input_option='RAW')
+                ws_gider.append_row([datetime.now().strftime('%Y-%m-%d')] + [inputs[k] or 0 for k in gider_ikonlari.keys()], value_input_option='RAW')
                 ws_ayrilan.append_row([datetime.now().strftime('%Y-%m-%d'), limit, yeni_kalan], value_input_option='RAW')
                 st.success(f"Kaydedildi. Kalan: {int(yeni_kalan)}"); st.rerun()
 
-    data_gi = ws_gider.get_all_records()
-    if data_gi:
-        df_gi = pd.DataFrame(data_gi)
-        kats = list(gider_ikonlari.keys())
-        for c in kats: 
-            if c in df_gi.columns: df_gi[c] = pd.to_numeric(df_gi[c], errors='coerce').fillna(0)
-        top_gi = df_gi[kats].sum().reset_index()
-        top_gi.columns = ['Kategori', 'Tutar']
-        top_gi['Etiket'] = top_gi['Kategori'].map(gider_ikonlari) + " " + top_gi['Kategori']
-        st.plotly_chart(px.pie(top_gi[top_gi['Tutar']>0], values='Tutar', names='Etiket', hole=0.4, title="Toplam Gider Dağılımı"), use_container_width=True)
-
-# --- SEKME 4: BÜTÇE ---
+# --- SEKME 4: BÜTÇE (HATA DÜZELTİLDİ) ---
 with tab_ayrilan:
     st.subheader("🛡️ Limit Tanımla")
     with st.form("b_form"):
         yeni_l = st.number_input("Yeni Aylık Limit", min_value=0)
         if st.form_submit_button("Başlat"):
-            ws_ayrilan.append_row([datetime.now().strftime('%Y-%m-%d'), yeni_l, yeni_l], value
+            # SyntaxError düzeltildi: Parantezler doğru kapatıldı
+            ws_ayrilan.append_row([datetime.now().strftime('%Y-%m-%d'), yeni_l, yeni_l], value_input_option='RAW')
+            st.success("Bütçe güncellendi."); st.rerun()
