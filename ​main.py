@@ -19,7 +19,7 @@ try:
     ws_portfoy = spreadsheet.worksheet("Veri Sayfası")
     ws_gelir = spreadsheet.worksheet("Gelirler")
     ws_gider = spreadsheet.worksheet("Giderler")
-    ws_ayrilan = spreadsheet.worksheet("Gidere Ayrılan")
+    ws_ayrilan = spreadsheet.worksheet("Gidere Ayrılan Tutar")
 except Exception as e:
     st.error(f"Sayfa Bağlantı Hatası: {e}. Lütfen Sheets sayfa isimlerini kontrol edin.")
     st.stop()
@@ -28,7 +28,7 @@ except Exception as e:
 st.markdown("""<style> input::-webkit-outer-spin-button, input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; } input[type=number] { -moz-appearance: textfield; } </style>""", unsafe_allow_html=True)
 
 # --- 3. ANA SEKMELER (TABS) ---
-tab_portfoy, tab_gelir, tab_gider, tab_ayrilan = st.tabs(["📊 Portföy", "💵 Gelirler", "💸 Giderler", "🛡️ Gidere Ayrılan"])
+tab_portfoy, tab_gelir, tab_gider, tab_ayrilan = st.tabs(["📊 Portföy", "💵 Gelirler", "💸 Giderler", "🛡️ Gidere Ayrılan Tutar"])
 
 # --- SEKME 1: PORTFÖY YÖNETİMİ (Mevcut Kodun) ---
 with tab_portfoy:
