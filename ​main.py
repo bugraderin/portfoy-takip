@@ -23,12 +23,11 @@ except Exception as e:
     st.error(f"Bağlantı Hatası: {e}")
     st.stop()
 
-# CSS: Artı/Eksi butonlarını gizler
+# CSS
 st.markdown("""<style> input::-webkit-outer-spin-button, input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; } input[type=number] { -moz-appearance: textfield; } </style>""", unsafe_allow_html=True)
 
-# --- YARDIMCI FONKSİYON: GÜNCEL BAKİYE ---
+# --- YARDIMCI FONKSİYONLAR ---
 def get_son_bakiye_ve_limit():
-    """Bütçe sayfasındaki son kalan tutarı ve tanımlı limiti getirir."""
     try:
         data = ws_ayrilan.get_all_records()
         if data:
@@ -41,7 +40,7 @@ def get_son_bakiye_ve_limit():
 # --- ANA SEKMELER ---
 tab_portfoy, tab_gelir, tab_gider, tab_ayrilan = st.tabs(["📊 Portföy Analizi", "💵 Gelirler", "💸 Giderler", "🛡️ Bütçe Planlama"])
 
-# --- SEKME 1: PORTFÖY ---
+# --- SEKME 1: PORTFÖY ANALİZİ ---
 with tab_portfoy:
     enstruman_bilgi = {'Hisse Senedi': '📈', 'Altın': '🟡', 'Gümüş': '⚪', 'Fon': '🏦', 'Döviz': '💵', 'Kripto': '₿', 'Mevduat': '💰', 'BES': '🛡️'}
     enstrumanlar = list(enstruman_bilgi.keys())
@@ -64,11 +63,36 @@ with tab_portfoy:
         df_p = df_p.sort_values('tarih')
         guncel = df_p.iloc[-1]
 
+        # Üst Metrikler
         st.metric("Toplam Varlık", f"{int(guncel['Toplam']):,.0f} TL".replace(",", "."))
-        fig_line = px.line(df_p, x='tarih', y='Toplam', markers=True, title="Varlık Gelişimi")
+        
+        # 1. VARLIK DAĞILIMI (PASTA) - Büyükten Küçüğe Sıralı
+        st.subheader("🥧 Varlık Dağılımı")
+        v_data = pd.DataFrame({'Enstrüman': enstrumanlar, 'Tutar': [guncel[e] for e in enstrumanlar]})
+        v_data = v_data[v_data['Tutar'] > 0].sort_values(by='Tutar', ascending=False) # Büyükten küçüğe
+        
+        fig_p_pie = px.pie(v_data, values='Tutar', names='Enstrüman', hole=0.4, color_discrete_sequence=px.colors.qualitative.Set3)
+        st.plotly_chart(fig_p_pie, use_container_width=True)
+
+        st.divider()
+        
+        # 2. PERFORMANS VE ZAMAN ÇİZELGESİ
+        st.subheader("⏱️ Performans ve Gelişim")
+        periyotlar = {"1 Gün": 1, "1 Ay": 30, "3 Ay": 90, "6 Ay": 180, "1 Yıl": 365, "3 Yıl": 1095, "5 Yıl": 1825}
+        secim = st.selectbox("Kıyaslama süresi seçin:", list(periyotlar.keys()), index=1)
+        
+        h_tarih = datetime.now() - timedelta(days=periyotlar[secim])
+        gecmis_df = df_p[df_p['tarih'] <= h_tarih]
+        baslangic = gecmis_df.iloc[-1] if not gecmis_df.empty else df_p.iloc[0]
+        
+        t_fark = guncel['Toplam'] - baslangic['Toplam']
+        b_yuzde = (t_fark / baslangic['Toplam'] * 100) if baslangic['Toplam'] > 0 else 0
+        st.success(f"**{secim}** öncesine göre değişim: **%{b_yuzde:.2f}**")
+
+        fig_line = px.line(df_p, x='tarih', y='Toplam', markers=True, title="Toplam Varlık Gelişimi")
         st.plotly_chart(fig_line, use_container_width=True)
 
-# --- SEKME 3: GİDERLER (DEVREDEN SİLİNDİ) ---
+# --- SEKME 3: GİDERLER (PASTA GRAFİKLİ) ---
 with tab_gider:
     st.subheader("💸 Gider Girişi")
     kalan_bakiye, limit = get_son_bakiye_ve_limit()
@@ -98,18 +122,32 @@ with tab_gider:
         if st.form_submit_button("✅ Harcamayı Kaydet"):
             kalemler = [genel, market, kira, aidat, kk, kredi, egitim, araba, seyahat, saglik, cocuk, ulashim]
             toplam_h = sum([x or 0 for x in kalemler])
-            
             if toplam_h > 0:
                 yeni_kalan = kalan_bakiye - toplam_h
-                
-                # Giderler Sayfasına Yaz (Tarih + 12 Kalem)
                 ws_gider.append_row([datetime.now().strftime('%Y-%m-%d')] + [x or 0 for x in kalemler], value_input_option='RAW')
-                
-                # Bütçe Sayfasına Yaz (Tarih, Ayrılan Tutar, Kalan)
                 ws_ayrilan.append_row([datetime.now().strftime('%Y-%m-%d'), limit, yeni_kalan], value_input_option='RAW')
-                
                 st.success(f"Kaydedildi. Yeni bakiye: {yeni_kalan} TL")
                 st.rerun()
+
+    # ÜNLÜ GİDER PASTASI
+    st.divider()
+    st.subheader("🥧 Harcama Dağılımı")
+    data_g = ws_gider.get_all_records()
+    if data_g:
+        df_g = pd.DataFrame(data_g)
+        kategoriler = ["Genel Giderler", "Market", "Kira", "Aidat", "Kredi Kartı", "Kredi", "Eğitim", "Araba", "Seyahat", "Sağlık", "Çocuk", "Toplu Taşıma"]
+        for col in kategoriler:
+            if col in df_g.columns:
+                df_g[col] = pd.to_numeric(df_g[col], errors='coerce').fillna(0)
+        
+        toplamlar = df_g[kategoriler].sum()
+        pasta_data = toplamlar[toplamlar > 0].reset_index()
+        pasta_data.columns = ['Kategori', 'Tutar']
+        pasta_data = pasta_data.sort_values(by='Tutar', ascending=False) # Giderleri de büyükten küçüğe sıralar
+
+        if not pasta_data.empty:
+            fig_g_pie = px.pie(pasta_data, values='Tutar', names='Kategori', hole=0.4, color_discrete_sequence=px.colors.qualitative.Pastel)
+            st.plotly_chart(fig_g_pie, use_container_width=True)
 
 # --- SEKME 4: BÜTÇE PLANI ---
 with tab_ayrilan:
@@ -117,7 +155,6 @@ with tab_ayrilan:
     with st.form("a_form", clear_on_submit=True):
         y_lim = st.number_input("Aylık Limit", min_value=0, value=None)
         if st.form_submit_button("Bütçeyi Başlat"):
-            # Tarih, Ayrılan Tutar, Kalan
             ws_ayrilan.append_row([datetime.now().strftime('%Y-%m-%d'), y_lim or 0, y_lim or 0], value_input_option='RAW')
             st.success("Yeni bütçe başlatıldı.")
             st.rerun()
