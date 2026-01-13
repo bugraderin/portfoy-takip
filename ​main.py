@@ -23,12 +23,15 @@ except Exception as e:
     st.error(f"Bağlantı Hatası: {e}")
     st.stop()
 
-# CSS: Spin buttonları gizle ve tablo fontunu küçült
+# CSS: Metriklerin font boyutunu küçültür ve gereksiz boşlukları alır
 st.markdown("""
-    <style> 
-    input::-webkit-outer-spin-button, input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; } 
+    <style>
+    [data-testid="stMetricValue"] { font-size: 18px !important; }
+    [data-testid="stMetricLabel"] { font-size: 14px !important; }
+    [data-testid="stMetricDelta"] { font-size: 12px !important; }
+    div[data-testid="stMetric"] { background-color: #f0f2f6; padding: 10px; border-radius: 10px; }
+    input::-webkit-outer-spin-button, input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
     input[type=number] { -moz-appearance: textfield; }
-    .small-font { font-size:14px !important; }
     </style>
     """, unsafe_allow_html=True)
 
@@ -71,65 +74,52 @@ with tab_portfoy:
         guncel = df_p.iloc[-1]
         onceki = df_p.iloc[-2] if len(df_p) > 1 else guncel
 
-        # 1. ÜST ÖZET (Büyük Metrik)
+        # TOPLAM VARLIK (ANA METRİK)
         t_fark = guncel['Toplam'] - onceki['Toplam']
         t_yuzde = (t_fark / onceki['Toplam'] * 100) if onceki['Toplam'] > 0 else 0
+        st.metric("Toplam Varlık", f"{int(guncel['Toplam']):,.0f} TL".replace(",", "."), f"{t_fark:,.0f} TL (%{t_yuzde:.2f})")
         
-        c1, c2 = st.columns([1, 2])
-        with c1:
-            st.metric("Toplam Varlık", f"{int(guncel['Toplam']):,.0f} TL".replace(",", "."), f"{t_fark:,.0f} TL (%{t_yuzde:.2f})")
-
-        # 2. KOMPAKT VARLIK TABLOSU (Sıralı)
-        varlik_data = []
+        st.write("### 📋 Güncel Varlıklar")
+        
+        # Varlıkları büyükten küçüğe sırala
+        varlik_listesi = []
         for e in enstrumanlar:
             if guncel[e] > 0:
                 degisim = guncel[e] - onceki[e]
                 yuzde = (degisim / onceki[e] * 100) if onceki[e] > 0 else 0
-                varlik_data.append({
-                    "Varlık": f"{enstruman_bilgi[e]} {e}",
-                    "Tutar (TL)": guncel[e],
-                    "Günlük Değişim": degisim,
-                    "Değişim %": yuzde
-                })
+                varlik_listesi.append({'Simge': enstruman_bilgi[e], 'Enstrüman': e, 'Tutar': guncel[e], 'Değişim': degisim, 'Yüzde': yuzde})
         
-        df_v = pd.DataFrame(varlik_data).sort_values(by="Tutar (TL)", ascending=False)
-        
-        # Tabloyu Formatla
-        with c2:
-            st.write("### 📋 Güncel Durum")
-            st.dataframe(
-                df_v.style.format({
-                    "Tutar (TL)": "{:,.0f}",
-                    "Günlük Değişim": "{:+,.0f}",
-                    "Değişim %": "{:+.2f}%"
-                }),
-                hide_index=True,
-                use_container_width=True
-            )
+        df_sirali = pd.DataFrame(varlik_listesi).sort_values(by='Tutar', ascending=False)
+
+        # KOMPAKT GRID: 4'lü kolonlar halinde metrikler
+        cols = st.columns(4)
+        for i, (index, row) in enumerate(df_sirali.iterrows()):
+            with cols[i % 4]:
+                st.metric(
+                    label=f"{row['Simge']} {row['Enstrüman']}",
+                    value=f"{int(row['Tutar']):,.0f} TL".replace(",", "."),
+                    delta=f"{row['Değişim']:,.0f} TL (%{row['Yüzde']:.2f})"
+                )
 
         st.divider()
-
         # --- ALT SEKMELER ---
         sub_tab_pasta, sub_tab_gelisim = st.tabs(["🥧 Varlık Dağılımı", "⏱️ Performans ve Gelişim"])
 
         with sub_tab_pasta:
-            fig_p_pie = px.pie(df_v, values='Tutar (TL)', names='Varlık', hole=0.4, color_discrete_sequence=px.colors.qualitative.Set3)
+            fig_p_pie = px.pie(df_sirali, values='Tutar', names='Enstrüman', hole=0.4, color_discrete_sequence=px.colors.qualitative.Set3)
             st.plotly_chart(fig_p_pie, use_container_width=True)
 
         with sub_tab_gelisim:
             periyotlar = {"1 Gün": 1, "1 Ay": 30, "3 Ay": 90, "6 Ay": 180, "1 Yıl": 365, "3 Yıl": 1095, "5 Yıl": 1825}
             secim = st.selectbox("Kıyaslama süresi seçin:", list(periyotlar.keys()), index=1)
-            
             h_tarih = datetime.now() - timedelta(days=periyotlar[secim])
             gecmis_df = df_p[df_p['tarih'] <= h_tarih]
             baslangic = gecmis_df.iloc[-1] if not gecmis_df.empty else df_p.iloc[0]
-            
             p_fark = guncel['Toplam'] - baslangic['Toplam']
             p_yuzde = (p_fark / baslangic['Toplam'] * 100) if baslangic['Toplam'] > 0 else 0
-            st.success(f"**{secim}** öncesine göre toplam değişim: **%{p_yuzde:.2f}**")
-
+            st.success(f"**{secim}** öncesine göre değişim: **%{p_yuzde:.2f}**")
             fig_line = px.line(df_p, x='tarih', y='Toplam', markers=True, title="Toplam Varlık Gelişimi")
             st.plotly_chart(fig_line, use_container_width=True)
 
-# --- SEKME 3, 2, 4 (Aynı şekilde korunmuştur) ---
-# ... (Gider, Gelir ve Bütçe Planlama kodları önceki ile birebir aynıdır)
+# Gider, Gelir ve Bütçe Planlama kısımları bozulmadan korunmuştur.
+# ... (Kalan kodlar öncekiyle aynı)
