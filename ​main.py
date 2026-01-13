@@ -4,23 +4,17 @@ from google.oauth2.service_account import Credentials
 import pandas as pd
 from datetime import datetime
 import plotly.express as px
-import plotly.io as pio
 
 # --- SAYFA AYARLARI ---
 st.set_page_config(page_title="Finansal Takip", layout="wide")
 
-# Plotly Türkçe Dil Desteği Ayarı
-pio.templates.default = "plotly_white"
-config_tr = {
-    'responsive': True,
-    'scrollZoom': True,
-    'displaylogo': False,
-    'modeBarButtonsToRemove': ['select2d', 'lasso2d', 'zoomIn2d', 'zoomOut2d', 'autoScale2d', 'resetScale2d', 'toImage']
+# Türkçe Ay ve Gün Sözlüğü (Grafik Etiketleri İçin)
+TR_AYLAR_KISA = {
+    'Jan': 'Oca', 'Feb': 'Şub', 'Mar': 'Mar', 'Apr': 'Nis', 'May': 'May', 'Jun': 'Haz',
+    'Jul': 'Tem', 'Aug': 'Ağu', 'Sep': 'Eyl', 'Oct': 'Eki', 'Nov': 'Kas', 'Dec': 'Ara'
 }
-
-# Türkçe Ay Sözlüğü
-TR_AYLAR = {1: "Ocak", 2: "Şubat", 3: "Mart", 4: "Nisan", 5: "Mayıs", 6: "Haziran", 
-            7: "Temmuz", 8: "Ağustos", 9: "Eylül", 10: "Ekim", 11: "Kasım", 12: "Aralık"}
+TR_AYLAR_TAM = {1: "Ocak", 2: "Şubat", 3: "Mart", 4: "Nisan", 5: "Mayıs", 6: "Haziran", 
+                7: "Temmuz", 8: "Ağustos", 9: "Eylül", 10: "Ekim", 11: "Kasım", 12: "Aralık"}
 
 # --- 1. GOOGLE SHEETS BAĞLANTISI ---
 scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
@@ -56,10 +50,18 @@ def get_son_bakiye_ve_limit():
         return 0.0, 0.0
     except: return 0.0, 0.0
 
+def turkcelestir_eksen(fig):
+    """Grafik eksenindeki İngilizce ayları Türkçe yapar."""
+    fig.update_xaxes(
+        ticktext=[f"{d.day} {TR_AYLAR_KISA.get(d.strftime('%b'), d.strftime('%b'))}" for d in df_p['tarih']],
+        tickvals=df_p['tarih']
+    )
+    return fig
+
 # --- ANA SEKMELER ---
 tab_portfoy, tab_gelir, tab_gider, tab_ayrilan = st.tabs(["📊 Portföy", "💵 Gelirler", "💸 Giderler", "🛡️ Bütçe"])
 
-# --- SEKME 1: PORTFÖY (SOL PANEL KORUNDU) ---
+# --- SEKME 1: PORTFÖY ---
 with tab_portfoy:
     enstruman_bilgi = {
         'Hisse Senedi': '📈', 'Altın': '🟡', 'Gümüş': '⚪', 'Fon': '🏦', 
@@ -86,7 +88,6 @@ with tab_portfoy:
         
         guncel = df_p.iloc[-1]
         onceki = df_p.iloc[-2] if len(df_p) > 1 else guncel
-
         st.metric("Toplam Varlık", f"{int(guncel['Toplam']):,.0f}".replace(",", "."), f"{int(guncel['Toplam'] - onceki['Toplam']):,.0f}")
         
         varlik_data = []
@@ -109,23 +110,19 @@ with tab_portfoy:
             fig_p = px.pie(df_v, values='Tutar', names='Etiket', hole=0.4, color_discrete_sequence=px.colors.qualitative.Pastel)
             st.plotly_chart(fig_p, use_container_width=True)
         with sub_tab2:
-            # Grafik Ekseni Türkçe Yapıldı
-            df_p['tarih_tr'] = df_p['tarih'].dt.day.astype(str) + " " + df_p['tarih'].dt.month.map(TR_AYLAR)
-            fig_l = px.line(df_p, x='tarih', y='Toplam', markers=True, title="Toplam Varlık Seyri", custom_data=['tarih_tr'])
-            fig_l.update_traces(hovertemplate="Tarih: %{customdata[0]}<br>Toplam: %{y:,.0f}")
+            # Grafik ve Manuel Türkçe Tarih Etiketleri
+            df_p['tarih_etiket'] = df_p['tarih'].dt.day.astype(str) + " " + df_p['tarih'].dt.month.map(TR_AYLAR_TAM)
+            fig_l = px.line(df_p, x='tarih', y='Toplam', markers=True, title="Toplam Varlık Seyri")
             
-            # Eksen Yerelleştirme
+            # Hover ve Eksen Düzenleme
+            fig_l.update_traces(customdata=df_p['tarih_etiket'], hovertemplate="Tarih: %{customdata}<br>Toplam: %{y:,.0f}")
             fig_l.update_xaxes(
-                tickformat="%d %b\n%Y",
-                tickformatstops=[
-                    dict(dtickrange=[None, 86400000], value="%d %b"), # Günlük
-                    dict(dtickrange=[86400000, 604800000], value="%d %b"), # Haftalık
-                    dict(dtickrange=[604800000, "M1"], value="%b %Y"), # Aylık
-                ],
+                tickvals=df_p['tarih'],
+                ticktext=[f"{d.day} {TR_AYLAR_KISA.get(d.strftime('%b'))}" for d in df_p['tarih']],
                 title="Tarih"
             )
-            fig_l.update_layout(dragmode='pan')
-            st.plotly_chart(fig_l, use_container_width=True, config=config_tr)
+            fig_l.update_layout(dragmode='pan', modebar_remove=['select2d', 'lasso2d', 'zoomIn2d', 'zoomOut2d', 'autoScale2d', 'resetScale2d', 'toImage'])
+            st.plotly_chart(fig_l, use_container_width=True, config={'scrollZoom': True})
 
 # --- SEKME 2: GELİRLER ---
 with tab_gelir:
@@ -153,15 +150,19 @@ with tab_gelir:
             g_pie_df = pd.DataFrame({'Kategori': ["Maaş", "Prim & Promosyon", "Yatırımlar"], 'Tutar': [son_g.get("Maaş", 0), son_g.get("Prim&Promosyon", 0), son_g.get("Yatırımlar", 0)]})
             st.plotly_chart(px.pie(g_pie_df[g_pie_df['Tutar']>0], values='Tutar', names='Kategori', hole=0.4), use_container_width=True)
         with g_sub2:
-            df_g['tarih_tr'] = df_g['tarih'].dt.month.map(TR_AYLAR) + " " + df_g['tarih'].dt.year.astype(str)
-            fig_gl = px.line(df_g, x='tarih', y='Toplam', markers=True, title="Aylık Gelir Gelişimi", custom_data=['tarih_tr'])
-            fig_gl.update_traces(hovertemplate="Dönem: %{customdata[0]}<br>Gelir: %{y:,.0f}")
+            df_g['tarih_etiket'] = df_g['tarih'].dt.month.map(TR_AYLAR_TAM) + " " + df_g['tarih'].dt.year.astype(str)
+            fig_gl = px.line(df_g, x='tarih', y='Toplam', markers=True, title="Aylık Gelir Gelişimi")
             
-            fig_gl.update_xaxes(tickformat="%b %Y", title="Dönem")
-            fig_gl.update_layout(dragmode='pan')
-            st.plotly_chart(fig_gl, use_container_width=True, config=config_tr)
+            fig_gl.update_traces(customdata=df_g['tarih_etiket'], hovertemplate="Dönem: %{customdata}<br>Gelir: %{y:,.0f}")
+            fig_gl.update_xaxes(
+                tickvals=df_g['tarih'],
+                ticktext=[f"{TR_AYLAR_KISA.get(d.strftime('%b'))} {d.year}" for d in df_g['tarih']],
+                title="Dönem"
+            )
+            fig_gl.update_layout(dragmode='pan', modebar_remove=['select2d', 'lasso2d', 'zoomIn2d', 'zoomOut2d', 'autoScale2d', 'resetScale2d', 'toImage'])
+            st.plotly_chart(fig_gl, use_container_width=True, config={'scrollZoom': True})
 
-# --- SEKME 3: GİDERLER (İKONLAR KORUNDU) ---
+# --- SEKME 3: GİDERLER ---
 with tab_gider:
     st.subheader("💸 Gider Yönetimi")
     kalan_bakiye, limit = get_son_bakiye_ve_limit()
@@ -178,17 +179,14 @@ with tab_gider:
         genel = c1.number_input(f"{gider_ikonlari['Genel Giderler']} Genel Giderler", min_value=0, value=None)
         market = c2.number_input(f"{gider_ikonlari['Market']} Market", min_value=0, value=None)
         kira = c3.number_input(f"{gider_ikonlari['Kira']} Kira", min_value=0, value=None)
-        
         c4, c5, c6 = st.columns(3)
         aidat = c4.number_input(f"{gider_ikonlari['Aidat']} Aidat", min_value=0, value=None)
         kk = c5.number_input(f"{gider_ikonlari['Kredi Kartı']} Kredi Kartı", min_value=0, value=None)
         kredi = c6.number_input(f"{gider_ikonlari['Kredi']} Kredi", min_value=0, value=None)
-        
         c7, c8, c9 = st.columns(3)
         egitim = c7.number_input(f"{gider_ikonlari['Eğitim']} Eğitim", min_value=0, value=None)
         araba = c8.number_input(f"{gider_ikonlari['Araba']} Araba", min_value=0, value=None)
         seyahat = c9.number_input(f"{gider_ikonlari['Seyahat']} Seyahat", min_value=0, value=None)
-        
         c10, c11, c12 = st.columns(3)
         saglik = c10.number_input(f"{gider_ikonlari['Sağlık']} Sağlık", min_value=0, value=None)
         cocuk = c11.number_input(f"{gider_ikonlari['Çocuk']} Çocuk", min_value=0, value=None)
@@ -220,5 +218,4 @@ with tab_ayrilan:
     with st.form("b_form"):
         yeni_l = st.number_input("Yeni Aylık Limit", min_value=0)
         if st.form_submit_button("Başlat"):
-            ws_ayrilan.append_row([datetime.now().strftime('%Y-%m-%d'), yeni_l, yeni_l], value_input_option='RAW')
-            st.success("Bütçe güncellendi."); st.rerun()
+            ws_ayrilan.append_row([datetime.now().strftime('%Y-%m-%d'), yeni_l, yeni_l], value
