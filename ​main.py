@@ -43,7 +43,7 @@ def get_son_bakiye_ve_limit():
         return 0.0, 0.0
     except: return 0.0, 0.0
 
-# --- NAVİGASYON (Sidebar Gizleme İçin Radyo Buton) ---
+# --- NAVİGASYON ---
 secilen_sekme = st.radio("", ["📊 Portföy", "💵 Gelirler", "💸 Giderler", "🛡️ Bütçe"], horizontal=True)
 
 # --- SEKME 1: PORTFÖY ---
@@ -71,18 +71,14 @@ if secilen_sekme == "📊 Portföy":
         onceki = df_p.iloc[-2] if len(df_p) > 1 else guncel
         toplam_tl = guncel['Toplam']
 
-        # DİNAMİK ÜST METRİKLER (Altın, USD, EUR, BTC Karşılıkları)
         m1, m2, m3, m4, m5 = st.columns(5)
         m1.metric("Toplam Varlık (TL)", f"{int(toplam_tl):,.0f}".replace(",", "."), f"{int(toplam_tl - onceki['Toplam']):,.0f}")
-        # Örnek kurlar üzerinden hesaplama (API eklenene kadar baz değerler)
-        m2.metric("Altın Karşılığı", f"{(toplam_tl / 3150):.2f} gr") # Gram fiyatı ~3150 TL varsayıldı
+        m2.metric("Altın Karşılığı", f"{(toplam_tl / 3150):.2f} gr")
         m3.metric("USD Karşılığı", f"$ {(toplam_tl / 35.5):,.0f}")
         m4.metric("EUR Karşılığı", f"€ {(toplam_tl / 38.2):,.0f}")
         m5.metric("BTC Karşılığı", f"₿ {(toplam_tl / 3500000):.4f}")
 
         st.divider()
-
-        # Enstrüman Bazlı Alt Metrikler
         varlik_data = []
         for e in enstrumanlar:
             if guncel[e] > 0:
@@ -137,7 +133,7 @@ elif secilen_sekme == "💵 Gelirler":
         fig_gl.update_layout(dragmode='pan', modebar_remove=['select2d', 'lasso2d', 'zoomIn2d', 'zoomOut2d', 'autoScale2d', 'resetScale2d', 'toImage'])
         st.plotly_chart(fig_gl, use_container_width=True, config={'scrollZoom': True})
 
-# --- SEKME 3: GİDERLER (PASTA GERİ EKLENDİ) ---
+# --- SEKME 3: GİDERLER ---
 elif secilen_sekme == "💸 Giderler":
     kalan_bakiye, limit = get_son_bakiye_ve_limit()
     st.info(f"💰 Güncel Kalan Bütçe: **{int(kalan_bakiye):,.0f}**")
@@ -154,22 +150,25 @@ elif secilen_sekme == "💸 Giderler":
                 ws_ayrilan.append_row([datetime.now().strftime('%Y-%m-%d'), limit, yeni_kalan], value_input_option='RAW')
                 st.success(f"Kaydedildi. Kalan: {int(yeni_kalan)}"); st.rerun()
 
+    # Giderler Pasta Grafiği Alanı
     data_gi = ws_gider.get_all_records()
     if data_gi:
         df_gi = pd.DataFrame(data_gi)
         kats = list(gider_ikonlari.keys())
-        for c in kats: 
+        for c in kats:
             if c in df_gi.columns: df_gi[c] = pd.to_numeric(df_gi[c], errors='coerce').fillna(0)
         
-        # Pasta Grafiği Verisi Hazırlama
+        # Kategorilere göre toplam alıp pasta verisi oluşturma
         top_gi = df_gi[kats].sum().reset_index()
         top_gi.columns = ['Kategori', 'Tutar']
         top_gi['Etiket'] = top_gi['Kategori'].map(lambda x: f"{gider_ikonlari.get(x, '')} {x}")
         
         if top_gi['Tutar'].sum() > 0:
             st.divider()
-            fig_g_pie = px.pie(top_gi[top_gi['Tutar']>0], values='Tutar', names='Etiket', hole=0.4, title="Toplam Gider Dağılımı", color_discrete_sequence=px.colors.qualitative.Set3)
-            fig_g_pie.update_traces(hovertemplate="%{label}<br>Tutar: %{value:,.0f}")
+            fig_g_pie = px.pie(top_gi[top_gi['Tutar']>0], values='Tutar', names='Etiket', hole=0.4, 
+                               title="Gider Dağılımı (Kategorik)", 
+                               color_discrete_sequence=px.colors.qualitative.Pastel)
+            fig_g_pie.update_traces(hovertemplate="%{label}<br>Toplam Harcama: %{value:,.0f} TL")
             st.plotly_chart(fig_g_pie, use_container_width=True)
 
 # --- SEKME 4: BÜTÇE ---
