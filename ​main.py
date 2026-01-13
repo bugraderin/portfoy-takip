@@ -29,7 +29,7 @@ try:
     # Gemini AI Kurulumu
     if "gemini_api_key" in st.secrets:
         genai.configure(api_key=st.secrets["gemini_api_key"])
-        model = genai.GenerativeModel('gemini-1.5-flash')
+        model = genai.GenerativeModel('gemini-1.5-flash-latest')
     else:
         st.warning("AI Analizi için lütfen secrets kısmına 'gemini_api_key' ekleyin.")
 except Exception as e:
