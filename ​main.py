@@ -22,8 +22,14 @@ except Exception as e:
 
 # --- 2. VERİ GİRİŞİ VE İKON TANIMLARI ---
 enstruman_bilgi = {
-    'Hisse Senedi': '📈', 'Altın': '🟡', 'Gümüş': '⚪', 'Fon': '🏦',
-    'Döviz': '💵', 'Kripto': '🪙', 'Mevduat': '💰', 'BES': '🛡️'
+    'Hisse Senedi': '📈', 
+    'Altın': '🟡', 
+    'Gümüş': '⚪', 
+    'Fon': '🏦',
+    'Döviz': '💵', 
+    'Kripto': '₿',  # Kutu hatası veren simgeyi standart BTC simgesiyle değiştirdik
+    'Mevduat': '💰', 
+    'BES': '🛡️'
 }
 enstrumanlar = list(enstruman_bilgi.keys())
 
