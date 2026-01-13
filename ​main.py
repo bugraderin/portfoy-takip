@@ -44,13 +44,16 @@ def get_son_bakiye_ve_limit():
         return 0.0, 0.0
     except: return 0.0, 0.0
 
-tab_portfoy, tab_gelir, tab_gider, tab_ayrilan = st.tabs(["📊 Portföy", "💵 Gelirler", "💸 Giderler", "🛡️ Bütçe"])
+# ANA SEKMELER
+tabs = ["📊 Portföy", "💵 Gelirler", "💸 Giderler", "🛡️ Bütçe"]
+tab_portfoy_label, tab_gelir_label, tab_gider_label, tab_ayrilan_label = st.tabs(tabs)
 
 # --- SEKME 1: PORTFÖY ---
-with tab_portfoy:
+with tab_portfoy_label:
     enstruman_bilgi = {'Hisse Senedi': '📈', 'Altın': '🟡', 'Gümüş': '⚪', 'Fon': '🏦', 'Döviz': '💵', 'Kripto': '₿', 'Mevduat': '💰', 'BES': '🛡️'}
     enstrumanlar = list(enstruman_bilgi.keys())
 
+    # Portföy Güncelle Menüsü Sadece Bu Blokta (Sidebar)
     with st.sidebar:
         st.header("📥 Portföy Güncelle")
         with st.form("p_form", clear_on_submit=True):
@@ -91,7 +94,6 @@ with tab_portfoy:
         with sub_tab1:
             df_v['Etiket'] = df_v['Icon'] + " " + df_v['Cins']
             fig_p = px.pie(df_v, values='Tutar', names='Etiket', hole=0.4, color_discrete_sequence=px.colors.qualitative.Pastel)
-            # Hover düzenlemesi: Sadece isim ve tutar görünecek şekilde ayarlandı
             fig_p.update_traces(hovertemplate="%{label}<br>Tutar: %{value:,.0f}")
             st.plotly_chart(fig_p, use_container_width=True)
             
@@ -104,7 +106,7 @@ with tab_portfoy:
             st.plotly_chart(fig_l, use_container_width=True, config={'scrollZoom': True})
 
 # --- SEKME 2: GELİRLER ---
-with tab_gelir:
+with tab_gelir_label:
     st.subheader("💵 Gelir Yönetimi")
     with st.form("g_form", clear_on_submit=True):
         c1, c2, c3 = st.columns(3)
@@ -131,7 +133,7 @@ with tab_gelir:
         st.plotly_chart(fig_gl, use_container_width=True, config={'scrollZoom': True})
 
 # --- SEKME 3: GİDERLER ---
-with tab_gider:
+with tab_gider_label:
     kalan_bakiye, limit = get_son_bakiye_ve_limit()
     st.info(f"💰 Güncel Kalan Bütçe: **{int(kalan_bakiye):,.0f}**")
     gider_ikonlari = {"Genel Giderler": "📦", "Market": "🛒", "Kira": "🏠", "Aidat": "🏢", "Kredi Kartı": "💳", "Kredi": "🏦", "Eğitim": "🎓", "Araba": "🚗", "Seyahat": "✈️", "Sağlık": "🏥", "Çocuk": "👶", "Toplu Taşıma": "🚌"}
@@ -147,7 +149,7 @@ with tab_gider:
                 st.success(f"Kaydedildi. Kalan: {int(yeni_kalan)}"); st.rerun()
 
 # --- SEKME 4: BÜTÇE ---
-with tab_ayrilan:
+with tab_ayrilan_label:
     with st.form("b_form"):
         yeni_l = st.number_input("Yeni Aylık Limit", min_value=0)
         if st.form_submit_button("Başlat"):
