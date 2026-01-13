@@ -124,4 +124,7 @@ if data:
             perf_cols[i % 4].metric(f"{enstruman_bilgi[e]} {e}", f"{v_yeni:,.0f} TL", "Yeni")
 
     st.divider()
-    with st.expander("📄 Tüm Kay
+    with st.expander("📄 Tüm Kayıtları Listele"):
+        st.dataframe(df.sort_values('tarih', ascending=False), use_container_width=True)
+else:
+    st.info("💡 Başlamak için sol menüden ilk verinizi kaydedin.")
