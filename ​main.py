@@ -46,7 +46,7 @@ def get_son_bakiye_ve_limit():
 
 tab_portfoy, tab_gelir, tab_gider, tab_ayrilan = st.tabs(["📊 Portföy", "💵 Gelirler", "💸 Giderler", "🛡️ Bütçe"])
 
-# --- SEKME 1: PORTFÖY ---
+# --- SEKME 1: PORTFÖY (ENSTRÜMANLAR VE PASTA GERİ GETİRİLDİ) ---
 with tab_portfoy:
     enstruman_bilgi = {'Hisse Senedi': '📈', 'Altın': '🟡', 'Gümüş': '⚪', 'Fon': '🏦', 'Döviz': '💵', 'Kripto': '₿', 'Mevduat': '💰', 'BES': '🛡️'}
     enstrumanlar = list(enstruman_bilgi.keys())
@@ -68,15 +68,35 @@ with tab_portfoy:
         df_p['Toplam'] = df_p[enstrumanlar].sum(axis=1)
         
         guncel = df_p.iloc[-1]
-        st.metric("Toplam Varlık", f"{int(guncel['Toplam']):,.0f}".replace(",", "."))
+        onceki = df_p.iloc[-2] if len(df_p) > 1 else guncel
+        
+        st.metric("Toplam Varlık", f"{int(guncel['Toplam']):,.0f}".replace(",", "."), f"{int(guncel['Toplam'] - onceki['Toplam']):,.0f}")
 
+        # Enstrüman Metrikleri
+        varlik_data = []
+        for e in enstrumanlar:
+            if guncel[e] > 0:
+                degisim = guncel[e] - onceki[e]
+                yuzde = (degisim / onceki[e] * 100) if onceki[e] > 0 else 0
+                varlik_data.append({'Cins': e, 'Tutar': guncel[e], 'Yüzde': yuzde, 'Icon': enstruman_bilgi[e]})
+        
+        df_v = pd.DataFrame(varlik_data).sort_values(by="Tutar", ascending=False)
+        cols = st.columns(4)
+        for i, (index, row) in enumerate(df_v.iterrows()):
+            with cols[i % 4]:
+                st.metric(f"{row['Icon']} {row['Cins']}", f"{int(row['Tutar']):,.0f}".replace(",", "."), f"%{row['Yüzde']:.2f}")
+
+        st.divider()
         sub_tab1, sub_tab2 = st.tabs(["🥧 Varlık Dağılımı", "📈 Gelişim Analizi"])
+        
+        with sub_tab1:
+            df_v['Etiket'] = df_v['Icon'] + " " + df_v['Cins']
+            fig_p = px.pie(df_v, values='Tutar', names='Etiket', hole=0.4, color_discrete_sequence=px.colors.qualitative.Pastel)
+            st.plotly_chart(fig_p, use_container_width=True)
+            
         with sub_tab2:
-            # Türkçe Tarih Etiketleri Oluşturma
             df_p['tarih_tr'] = df_p['tarih'].dt.day.astype(str) + " " + df_p['tarih'].dt.month.map(TR_AYLAR_TAM)
             fig_l = px.line(df_p, x='tarih', y='Toplam', markers=True, title="Toplam Varlık Seyri")
-            
-            # Kare seçimi kapatma ve Türkçe ayarları uygulama
             fig_l.update_traces(customdata=df_p['tarih_tr'], hovertemplate="Tarih: %{customdata}<br>Toplam: %{y:,.0f}")
             fig_l.update_xaxes(tickvals=df_p['tarih'], ticktext=[f"{d.day} {TR_AYLAR_KISA.get(d.strftime('%b'))}" for d in df_p['tarih']], title="Tarih")
             fig_l.update_layout(dragmode='pan', modebar_remove=['select2d', 'lasso2d', 'zoomIn2d', 'zoomOut2d', 'autoScale2d', 'resetScale2d', 'toImage'])
@@ -109,19 +129,14 @@ with tab_gelir:
         fig_gl.update_layout(dragmode='pan', modebar_remove=['select2d', 'lasso2d', 'zoomIn2d', 'zoomOut2d', 'autoScale2d', 'resetScale2d', 'toImage'])
         st.plotly_chart(fig_gl, use_container_width=True, config={'scrollZoom': True})
 
-# --- SEKME 3: GİDERLER (İKONLAR KORUNDU) ---
+# --- SEKME 3: GİDERLER ---
 with tab_gider:
-    st.subheader("💸 Gider Yönetimi")
     kalan_bakiye, limit = get_son_bakiye_ve_limit()
     st.info(f"💰 Güncel Kalan Bütçe: **{int(kalan_bakiye):,.0f}**")
     gider_ikonlari = {"Genel Giderler": "📦", "Market": "🛒", "Kira": "🏠", "Aidat": "🏢", "Kredi Kartı": "💳", "Kredi": "🏦", "Eğitim": "🎓", "Araba": "🚗", "Seyahat": "✈️", "Sağlık": "🏥", "Çocuk": "👶", "Toplu Taşıma": "🚌"}
-    
     with st.form("gi_form", clear_on_submit=True):
         cols = st.columns(3)
-        inputs = {}
-        for i, (isim, ikon) in enumerate(gider_ikonlari.items()):
-            inputs[isim] = cols[i % 3].number_input(f"{ikon} {isim}", min_value=0, value=None)
-        
+        inputs = {isim: cols[i % 3].number_input(f"{ikon} {isim}", min_value=0, value=None) for i, (isim, ikon) in enumerate(gider_ikonlari.items())}
         if st.form_submit_button("✅ Harcamayı Kaydet"):
             toplam_h = sum([v or 0 for v in inputs.values()])
             if toplam_h > 0:
@@ -130,12 +145,10 @@ with tab_gider:
                 ws_ayrilan.append_row([datetime.now().strftime('%Y-%m-%d'), limit, yeni_kalan], value_input_option='RAW')
                 st.success(f"Kaydedildi. Kalan: {int(yeni_kalan)}"); st.rerun()
 
-# --- SEKME 4: BÜTÇE (HATA DÜZELTİLDİ) ---
+# --- SEKME 4: BÜTÇE ---
 with tab_ayrilan:
-    st.subheader("🛡️ Limit Tanımla")
     with st.form("b_form"):
         yeni_l = st.number_input("Yeni Aylık Limit", min_value=0)
         if st.form_submit_button("Başlat"):
-            # SyntaxError düzeltildi: Parantezler doğru kapatıldı
             ws_ayrilan.append_row([datetime.now().strftime('%Y-%m-%d'), yeni_l, yeni_l], value_input_option='RAW')
             st.success("Bütçe güncellendi."); st.rerun()
