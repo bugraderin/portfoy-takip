@@ -42,7 +42,7 @@ def get_son_bakiye_ve_limit():
         return 0.0, 0.0
     except: return 0.0, 0.0
 
-# NAVİGASYON (ORIGINAL TAB YAPISI)
+# --- SEKMELER ---
 tab_portfoy, tab_gelir, tab_gider, tab_ayrilan = st.tabs(["📊 Portföy", "💵 Gelirler", "💸 Giderler", "🛡️ Bütçe"])
 
 # --- SEKME 1: PORTFÖY ---
@@ -70,33 +70,25 @@ with tab_portfoy:
         onceki = df_p.iloc[-2] if len(df_p) > 1 else guncel
         toplam_tl = guncel['Toplam']
 
-        # Üst Metrikler ve Döviz Karşılıkları
-        m1, m2, m3, m4, m5 = st.columns(5)
-        m1.metric("Toplam Varlık (TL)", f"{int(toplam_tl):,.0f}".replace(",", "."), f"{int(toplam_tl - onceki['Toplam']):,.0f}")
-        m2.metric("Altın Karşılığı", f"{(toplam_tl / 3150):.2f} gr")
-        m3.metric("USD Karşılığı", f"$ {(toplam_tl / 35.5):,.0f}")
-        m4.metric("EUR Karşılığı", f"€ {(toplam_tl / 38.2):,.0f}")
-        m5.metric("BTC Karşılığı", f"₿ {(toplam_tl / 3500000):.4f}")
+        # SADECE TOPLAM VARLIK METRİĞİ
+        st.metric("Toplam Varlık (TL)", f"{int(toplam_tl):,.0f}".replace(",", "."), f"{int(toplam_tl - onceki['Toplam']):,.0f}")
 
-        # --- PORTFÖY DEĞİŞİM ANALİZİ (YENİ) ---
-        st.write("### ⏱️ Dönemsel Değişimler")
-        def get_change(days):
-            target_date = guncel['tarih'] - timedelta(days=days)
-            past_data = df_p[df_p['tarih'] <= target_date]
-            if not past_data.empty:
-                past_val = past_data.iloc[-1]['Toplam']
-                change = ((toplam_tl - past_val) / past_val) * 100
-                return f"%{change:+.2f}"
-            return "---"
-
-        c1, c2, c3, c4, c5, c6, c7 = st.columns(7)
-        c1.metric("1 Gün", get_change(1))
-        c2.metric("1 Ay", get_change(30))
-        c3.metric("3 Ay", get_change(90))
-        c4.metric("6 Ay", get_change(180))
-        c5.metric("1 Yıl", get_change(365))
-        c6.metric("3 Yıl", get_change(1095))
-        c7.metric("5 Yıl", get_change(1825))
+        # SEÇENEKLİ DÖNEMSEL DEĞİŞİM
+        st.write("### ⏱️ Değişim Analizi")
+        periyotlar = {"1 Gün": 1, "1 Ay": 30, "3 Ay": 90, "6 Ay": 180, "1 Yıl": 365, "3 Yıl": 1095, "5 Yıl": 1825}
+        secilen_periyot = st.selectbox("Analiz Periyodu Seçin", list(periyotlar.keys()))
+        
+        gun_farki = periyotlar[secilen_periyot]
+        hedef_tarih = guncel['tarih'] - timedelta(days=gun_farki)
+        gecmis_data = df_p[df_p['tarih'] <= hedef_tarih]
+        
+        if not gecmis_data.empty:
+            eski_deger = gecmis_data.iloc[-1]['Toplam']
+            fark = toplam_tl - eski_deger
+            yuzde = (fark / eski_deger) * 100
+            st.metric(f"{secilen_periyot} Önceye Göre Değişim", f"{int(fark):,.0f} TL".replace(",", "."), f"%{yuzde:.2f}")
+        else:
+            st.warning("Seçilen dönem için yeterli geçmiş veri bulunmuyor.")
 
         st.divider()
         # Enstrüman metrikleri
@@ -148,7 +140,7 @@ with tab_gelir:
             if col in df_g.columns: df_g[col] = pd.to_numeric(df_g[col], errors='coerce').fillna(0)
         df_g['tarih_tr'] = df_g['tarih'].dt.month.map(TR_AYLAR_TAM) + " " + df_g['tarih'].dt.year.astype(str)
         
-        # Gelir Grafiği (Geri Getirildi)
+        # GELİR ÇİZGİ GRAFİĞİ (EKLENDİ)
         fig_gl = px.line(df_g, x='tarih', y='Toplam', markers=True, title="Aylık Gelir Gelişimi")
         fig_gl.update_traces(customdata=df_g['tarih_tr'], hovertemplate="Dönem: %{customdata}<br>Gelir: %{y:,.0f}")
         fig_gl.update_xaxes(tickvals=df_g['tarih'], ticktext=[f"{TR_AYLAR_KISA.get(d.strftime('%b'))} {d.year}" for d in df_g['tarih']], title="Dönem")
@@ -193,17 +185,3 @@ with tab_ayrilan:
         if st.form_submit_button("Başlat"):
             ws_ayrilan.append_row([datetime.now().strftime('%Y-%m-%d'), yeni_l, yeni_l], value_input_option='RAW')
             st.success("Bütçe güncellendi."); st.rerun()
-
-# --- SAYFA ALTI KAYITLAR (YENİ - GERİ GETİRİLDİ) ---
-st.divider()
-st.subheader("📑 Son Kayıtlar")
-col_a, col_b, col_c = st.columns(3)
-with col_a:
-    st.write("📈 Portföy Kayıtları")
-    if 'data_p' in locals(): st.dataframe(df_p.tail(5), use_container_width=True)
-with col_b:
-    st.write("💵 Gelir Kayıtları")
-    if 'data_g' in locals(): st.dataframe(df_g.tail(5), use_container_width=True)
-with col_c:
-    st.write("💸 Gider Kayıtları")
-    if 'data_gi' in locals(): st.dataframe(df_gi.tail(5), use_container_width=True)
