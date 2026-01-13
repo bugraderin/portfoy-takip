@@ -82,7 +82,7 @@ if data:
  
     st.divider()
  
-    # --- 4. PERFORMANS ANALİZİ ---
+    # --- 4. PERFORMANS ANALİZİ (GÜNCELLENEN KISIM) ---
     st.subheader("⏱️ Dönemsel Performans Analizi")
     
     periyotlar = {
@@ -90,29 +90,37 @@ if data:
         "6 Ay": 180, "1 Yıl": 365, "3 Yıl": 1095, "5 Yıl": 1825
     }
     
-    # Hata veren slider yerine daha kararlı selectbox
     secilen_label = st.selectbox("Analiz periyodu seçin:", list(periyotlar.keys()))
     
     gun_farki = periyotlar[secilen_label]
     hedef_tarih = datetime.now() - timedelta(days=gun_farki)
     
-    # Hedef tarihteki veya ona en yakın veriyi bulma
+    # MANTIK DEĞİŞİKLİĞİ:
+    # Hedef tarihten ÖNCEKİ en son kaydı bulmaya çalışır.
+    # Eğer yoksa (yani yeni başladıysan), mevcut olan EN ESKİ kaydı başlangıç kabul eder.
     gecmis_df = df[df['tarih'] <= hedef_tarih]
     
-    if not gecmis_df.empty:
+    if gecmis_df.empty:
+        # Eğer hedef tarihte veri yoksa, sistemdeki ilk (en eski) veriyi al
+        baslangic_verisi = df.iloc[0]
+        baslangic_notu = "(Sistemdeki en eski veriniz baz alındı)"
+    else:
         baslangic_verisi = gecmis_df.iloc[-1]
-        
-        t_baslangic = baslangic_verisi['Toplam']
+        baslangic_notu = f"({secilen_label} önceki veriniz baz alındı)"
+    
+    # Başlangıç ve Güncel Veri Kıyaslama
+    t_baslangic = baslangic_verisi['Toplam']
+    
+    # Eğer başlangıç ve güncel veri aynıysa (tek kayıt varsa) uyarı ver
+    if len(df) > 1:
         t_degisim = ((guncel_toplam - t_baslangic) / t_baslangic) * 100 if t_baslangic > 0 else 0
         
-        st.info(f"📅 **{secilen_label}** önce portföyünüz **{t_baslangic:,.2f} TL** idi. Toplam Değişim: **%{t_degisim:.2f}**")
+        st.info(f"📅 **{secilen_label}** | Başlangıç: **{t_baslangic:,.2f} TL** | Toplam Değişim: **%{t_degisim:.2f}** \n*{baslangic_notu}*")
         
-        # Enstrüman Bazlı Gösterim
         st.write("🔍 **Varlık Bazlı Performans Detayları:**")
-        # Ekranı 4'lü sütunlara bölelim (Mobil uyumlu)
-        m_col1, m_col2, m_col3, m_col4 = st.columns(4)
-        m_col5, m_col6, m_col7, m_col8 = st.columns(4)
-        met_cols = [m_col1, m_col2, m_col3, m_col4, m_col5, m_col6, m_col7, m_col8]
+        m_cols = st.columns(4)
+        m_cols_2 = st.columns(4)
+        all_cols = m_cols + m_cols_2
         
         for i, e in enumerate(enstrumanlar):
             v_eski = baslangic_verisi[e]
@@ -120,12 +128,11 @@ if data:
             
             if v_eski > 0:
                 e_degisim = ((v_yeni - v_eski) / v_eski) * 100
-                # Delta özelliği ile yeşil/kırmızı oklar ekliyoruz
-                met_cols[i].metric(label=e, value=f"{v_yeni:,.0f} TL", delta=f"%{e_degisim:.1f}")
+                all_cols[i].metric(label=e, value=f"{v_yeni:,.0f} TL", delta=f"%{e_degisim:.1f}")
             else:
-                met_cols[i].metric(label=e, value=f"{v_yeni:,.0f} TL", delta="Yeni")
+                all_cols[i].metric(label=e, value=f"{v_yeni:,.0f} TL", delta="Veri Yok", delta_color="off")
     else:
-        st.warning(f"Seçilen periyot ({secilen_label}) için yeterli geçmiş veri bulunamadı.")
+        st.warning("Dönemsel analiz için en az iki farklı güne ait veri girişi yapılmış olmalıdır.")
  
     st.divider()
  
