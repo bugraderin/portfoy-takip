@@ -4,6 +4,7 @@ from google.oauth2.service_account import Credentials
 import pandas as pd
 from datetime import datetime, timedelta
 import plotly.express as px
+import google.generativeai as genai
 
 # --- SAYFA AYARLARI ---
 st.set_page_config(page_title="Finansal Takip", layout="wide")
@@ -11,10 +12,10 @@ st.set_page_config(page_title="Finansal Takip", layout="wide")
 # Türkçe Ay Sözlükleri
 TR_AYLAR_KISA = {'Jan': 'Oca', 'Feb': 'Şub', 'Mar': 'Mar', 'Apr': 'Nis', 'May': 'May', 'Jun': 'Haz',
                 'Jul': 'Tem', 'Aug': 'Ağu', 'Sep': 'Eyl', 'Oct': 'Eki', 'Nov': 'Kas', 'Dec': 'Ara'}
-TR_AYLAR_TAM = {1: "Ocak", 2: "Şubat", 3: "Mart", 4: "Nisan", 5: "Mayıs", 6: "Haziran",
+TR_AYLAR_TAM = {1: "Ocak", 2: "Şubat", 3: "Mart", 4: "Nisan", 5: "Mayıs", 6: "Haziran", 
                 7: "Temmuz", 8: "Ağustos", 9: "Eylül", 10: "Ekim", 11: "Kasım", 12: "Aralık"}
 
-# --- GOOGLE SHEETS BAĞLANTISI ---
+# --- 1. GOOGLE SHEETS VE AI BAĞLANTISI ---
 scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
 try:
     creds = Credentials.from_service_account_info(st.secrets["gcp_service_account"], scopes=scope)
@@ -24,22 +25,21 @@ try:
     ws_gelir = spreadsheet.worksheet("Gelirler")
     ws_gider = spreadsheet.worksheet("Giderler")
     ws_ayrilan = spreadsheet.worksheet("Gidere Ayrılan Tutar")
+    
+    # Gemini AI Kurulumu
+    if "gemini_api_key" in st.secrets:
+        genai.configure(api_key=st.secrets["gemini_api_key"])
+        model = genai.GenerativeModel('gemini-1.5-flash')
+    else:
+        st.warning("AI Analizi için lütfen secrets kısmına 'gemini_api_key' ekleyin.")
 except Exception as e:
-    st.error(f"Bağlantı Hatası: {e}")
-    st.stop()
+    st.error(f"Bağlantı Hatası: {e}"); st.stop()
 
-# --- CSS ---
-st.markdown("""
-<style>
-[data-testid="stMetricValue"] { font-size: 18px !important; }
-div[data-testid="stMetric"] {
-    background-color: #f8f9fa;
-    padding: 10px;
-    border-radius: 8px;
-    border: 1px solid #eee;
-}
-</style>
-""", unsafe_allow_html=True)
+# CSS Düzenlemeleri
+st.markdown("""<style>
+    [data-testid="stMetricValue"] { font-size: 18px !important; }
+    div[data-testid="stMetric"] { background-color: #f8f9fa; padding: 10px; border-radius: 8px; border: 1px solid #eee; }
+    </style>""", unsafe_allow_html=True)
 
 def get_son_bakiye_ve_limit():
     try:
@@ -48,64 +48,22 @@ def get_son_bakiye_ve_limit():
             son = data[-1]
             return float(son.get('Kalan', 0)), float(son.get('Ayrılan Tutar', 0))
         return 0.0, 0.0
-    except:
-        return 0.0, 0.0
+    except: return 0.0, 0.0
 
-# --- PORTFÖY AI YORUM FONKSİYONU (SADECE PORTFÖY) ---
-def portfoy_ai_yorumu(df_p):
-    if df_p is None or df_p.empty:
-        return ["📭 Portföyün boş görünüyor. Küçük tutarlarla başlayarak çeşitlendirme yapabilirsin."]
+# --- SEKMELER ---
+tab_portfoy, tab_gelir, tab_gider, tab_ayrilan, tab_ai = st.tabs(["📊 Portföy", "💵 Gelirler", "💸 Giderler", "🛡️ Bütçe", "🤖 AI Analiz"])
 
-    if "Toplam" not in df_p.columns:
-        return ["⚠️ Portföy verisi okunamadı."]
-
-    guncel = df_p.iloc[-1]
-    toplam = guncel["Toplam"]
-
-    if toplam <= 0:
-        return ["⚠️ Portföyünde varlık var ancak toplam değer sıfıra yakın."]
-
-    enstrumanlar = [c for c in df_p.columns if c not in ["tarih", "Toplam"]]
-    dagilim = {e: guncel[e] for e in enstrumanlar if guncel[e] > 0}
-
-    if not dagilim:
-        return ["📭 Portföyün boş görünüyor."]
-
-    en_buyuk = max(dagilim, key=dagilim.get)
-    oran = (dagilim[en_buyuk] / toplam) * 100
-
-    tuyolar = []
-    if oran > 70:
-        tuyolar.append(f"🚨 Portföyünün %{oran:.0f}’i **{en_buyuk}** ağırlıklı. Bu yüksek risk oluşturabilir.")
-    elif oran > 40:
-        tuyolar.append(f"⚠️ **{en_buyuk}** portföyde baskın. Dengeli ama takip edilmeli.")
-    else:
-        tuyolar.append("✅ Portföyün dengeli görünüyor. Risk dağılımı sağlıklı.")
-
-    tuyolar.append("📌 Uzun vadede düzenli ekleme yapmak dalgalanma riskini azaltabilir.")
-    return tuyolar
-
-# --- SEKME TANIMLARI ---
-tab_portfoy, tab_gelir, tab_gider, tab_ayrilan, tab_ai = st.tabs(
-    ["📊 Portföy", "💵 Gelirler", "💸 Giderler", "🛡️ Bütçe", "🤖 AI"]
-)
-
-# ================== PORTFÖY SEKME ==================
+# --- SEKME 1: PORTFÖY ---
 with tab_portfoy:
-    enstruman_bilgi = {'Hisse Senedi': '📈', 'Altın': '🟡', 'Gümüş': '⚪', 'Fon': '🏦',
-                       'Döviz': '💵', 'Kripto': '₿', 'Mevduat': '💰', 'BES': '🛡️'}
+    enstruman_bilgi = {'Hisse Senedi': '📈', 'Altın': '🟡', 'Gümüş': '⚪', 'Fon': '🏦', 'Döviz': '💵', 'Kripto': '₿', 'Mevduat': '💰', 'BES': '🛡️'}
     enstrumanlar = list(enstruman_bilgi.keys())
 
     with st.sidebar:
         st.header("📥 Portföy Güncelle")
         with st.form("p_form", clear_on_submit=True):
-            p_in = {e: st.number_input(f"{enstruman_bilgi[e]} {e}", min_value=0.0, value=None, format="%.f")
-                    for e in enstrumanlar}
+            p_in = {e: st.number_input(f"{enstruman_bilgi[e]} {e}", min_value=0.0, value=None, format="%.f") for e in enstrumanlar}
             if st.form_submit_button("🚀 Kaydet"):
-                ws_portfoy.append_row(
-                    [datetime.now().strftime('%Y-%m-%d')] + [p_in[e] or 0 for e in enstrumanlar],
-                    value_input_option='RAW'
-                )
+                ws_portfoy.append_row([datetime.now().strftime('%Y-%m-%d')] + [p_in[e] or 0 for e in enstrumanlar], value_input_option='RAW')
                 st.rerun()
 
     data_p = ws_portfoy.get_all_records()
@@ -113,27 +71,157 @@ with tab_portfoy:
         df_p = pd.DataFrame(data_p)
         df_p['tarih'] = pd.to_datetime(df_p['tarih'], errors='coerce')
         df_p = df_p.dropna(subset=['tarih']).sort_values('tarih')
-        for col in enstrumanlar:
-            df_p[col] = pd.to_numeric(df_p[col], errors='coerce').fillna(0)
+        for col in enstrumanlar: df_p[col] = pd.to_numeric(df_p[col], errors='coerce').fillna(0)
         df_p['Toplam'] = df_p[enstrumanlar].sum(axis=1)
-
+        
         guncel = df_p.iloc[-1]
         toplam_tl = guncel['Toplam']
+
         st.metric("Toplam Varlık (TL)", f"{int(toplam_tl):,.0f}".replace(",", "."))
 
-# ================== AI SEKME ==================
-with tab_ai:
-    st.subheader("🤖 Finansal Yapay Zekâ Asistanı")
-    st.caption("Sadece portföyüne bakarak oluşturulan basit tüyolar")
+        st.write("### ⏱️ Değişim Analizi")
+        periyotlar = {"1 Gün": 1, "1 Ay": 30, "3 Ay": 90, "6 Ay": 180, "1 Yıl": 365}
+        secilen_periyot = st.selectbox("Analiz Periyodu Seçin", list(periyotlar.keys()))
+        
+        gun_farki = periyotlar[secilen_periyot]
+        hedef_tarih = guncel['tarih'] - timedelta(days=gun_farki)
+        
+        gecmis_data = df_p[df_p['tarih'] <= hedef_tarih]
+        if gecmis_data.empty and len(df_p) > 1:
+            gecmis_data = df_p.head(1)
+            st.caption(f"ℹ️ {secilen_periyot} öncesine ait kayıt bulunamadı. Sistemdeki en eski kayıt ({gecmis_data.iloc[0]['tarih'].strftime('%d.%m.%Y')}) baz alındı.")
+        
+        if not gecmis_data.empty and len(df_p) > 1:
+            eski_deger = gecmis_data.iloc[-1]['Toplam']
+            if eski_deger > 0:
+                fark = toplam_tl - eski_deger
+                yuzde = (fark / eski_deger) * 100
+                st.metric(f"{secilen_periyot} Değişimi", f"{int(fark):,.0f} TL".replace(",", "."), f"%{yuzde:.2f}")
+        else:
+            st.info("Kıyaslama yapabilmek için en az iki farklı güne ait veri girişi gereklidir.")
 
-    try:
-        tuyolar = portfoy_ai_yorumu(df_p if 'df_p' in globals() else None)
-        for t in tuyolar:
-            if "🚨" in t:
-                st.error(t)
-            elif "⚠️" in t:
-                st.warning(t)
-            else:
-                st.success(t)
-    except:
-        st.info("Portföy verisi okunamadı.")
+        st.divider()
+        onceki = df_p.iloc[-2] if len(df_p) > 1 else guncel
+        varlik_data = []
+        for e in enstrumanlar:
+            if guncel[e] > 0:
+                degisim = guncel[e] - onceki[e]
+                yuzde = (degisim / onceki[e] * 100) if onceki[e] > 0 else 0
+                varlik_data.append({'Cins': e, 'Tutar': guncel[e], 'Yüzde': yuzde, 'Icon': enstruman_bilgi[e]})
+        df_v = pd.DataFrame(varlik_data).sort_values(by="Tutar", ascending=False)
+        cols = st.columns(4)
+        for i, (index, row) in enumerate(df_v.iterrows()):
+            with cols[i % 4]:
+                st.metric(f"{row['Icon']} {row['Cins']}", f"{int(row['Tutar']):,.0f}".replace(",", "."), f"%{row['Yüzde']:.2f}")
+
+        st.divider()
+        sub_tab1, sub_tab2 = st.tabs(["🥧 Varlık Dağılımı", "📈 Gelişim Analizi"])
+        with sub_tab1:
+            df_v['Etiket'] = df_v['Icon'] + " " + df_v['Cins']
+            fig_p = px.pie(df_v, values='Tutar', names='Etiket', hole=0.4, color_discrete_sequence=px.colors.qualitative.Pastel)
+            fig_p.update_traces(hovertemplate="%{label}<br>Tutar: %{value:,.0f}")
+            st.plotly_chart(fig_p, use_container_width=True)
+        with sub_tab2:
+            df_p['tarih_tr'] = df_p['tarih'].dt.day.astype(str) + " " + df_p['tarih'].dt.month.map(TR_AYLAR_TAM)
+            fig_l = px.line(df_p, x='tarih', y='Toplam', markers=True, title="Toplam Varlık Seyri")
+            fig_l.update_traces(customdata=df_p['tarih_tr'], hovertemplate="Tarih: %{customdata}<br>Toplam: %{y:,.0f}")
+            fig_l.update_xaxes(tickvals=df_p['tarih'], ticktext=[f"{d.day} {TR_AYLAR_KISA.get(d.strftime('%b'))}" for d in df_p['tarih']], title="Tarih")
+            fig_l.update_layout(dragmode='pan', modebar_remove=['select2d', 'lasso2d', 'zoomIn2d', 'zoomOut2d', 'autoScale2d', 'resetScale2d', 'toImage'])
+            st.plotly_chart(fig_l, use_container_width=True, config={'scrollZoom': True})
+
+# --- SEKME 2: GELİRLER ---
+with tab_gelir:
+    st.subheader("💵 Gelir Yönetimi")
+    with st.form("g_form", clear_on_submit=True):
+        c1, c2, c3 = st.columns(3)
+        m = c1.number_input("Maaş", min_value=0, value=None)
+        p = c2.number_input("Prim & Promosyon", min_value=0, value=None)
+        y = c3.number_input("Yatırımlar", min_value=0, value=None)
+        if st.form_submit_button("Geliri Kaydet"):
+            toplam = (m or 0) + (p or 0) + (y or 0)
+            ws_gelir.append_row([datetime.now().strftime('%Y-%m-%d'), m or 0, p or 0, y or 0, toplam], value_input_option='RAW')
+            st.success("Kaydedildi."); st.rerun()
+
+    data_g = ws_gelir.get_all_records()
+    if data_g:
+        df_g = pd.DataFrame(data_g)
+        df_g['tarih'] = pd.to_datetime(df_g['tarih'], errors='coerce')
+        for col in ["Maaş", "Prim&Promosyon", "Yatırımlar", "Toplam"]:
+            if col in df_g.columns: df_g[col] = pd.to_numeric(df_g[col], errors='coerce').fillna(0)
+        df_g['tarih_tr'] = df_g['tarih'].dt.month.map(TR_AYLAR_TAM) + " " + df_g['tarih'].dt.year.astype(str)
+        fig_gl = px.line(df_g, x='tarih', y='Toplam', markers=True, title="Aylık Gelir Gelişimi")
+        fig_gl.update_traces(customdata=df_g['tarih_tr'], hovertemplate="Dönem: %{customdata}<br>Gelir: %{y:,.0f}")
+        fig_gl.update_xaxes(tickvals=df_g['tarih'], ticktext=[f"{TR_AYLAR_KISA.get(d.strftime('%b'))} {d.year}" for d in df_g['tarih']], title="Dönem")
+        fig_gl.update_layout(dragmode='pan', modebar_remove=['select2d', 'lasso2d', 'zoomIn2d', 'zoomOut2d', 'autoScale2d', 'resetScale2d', 'toImage'])
+        st.plotly_chart(fig_gl, use_container_width=True, config={'scrollZoom': True})
+
+# --- SEKME 3: GİDERLER ---
+with tab_gider:
+    kalan_bakiye, limit = get_son_bakiye_ve_limit()
+    st.info(f"💰 Güncel Kalan Bütçe: **{int(kalan_bakiye):,.0f}**")
+    gider_ikonlari = {"Genel Giderler": "📦", "Market": "🛒", "Kira": "🏠", "Aidat": "🏢", "Kredi Kartı": "💳", "Kredi": "🏦", "Eğitim": "🎓", "Araba": "🚗", "Seyahat": "✈️", "Sağlık": "🏥", "Çocuk": "👶", "Toplu Taşıma": "🚌"}
+    with st.form("gi_form", clear_on_submit=True):
+        cols = st.columns(3)
+        inputs = {isim: cols[i % 3].number_input(f"{ikon} {isim}", min_value=0, value=None) for i, (isim, ikon) in enumerate(gider_ikonlari.items())}
+        if st.form_submit_button("✅ Harcamayı Kaydet"):
+            toplam_h = sum([v or 0 for v in inputs.values()])
+            if toplam_h > 0:
+                yeni_kalan = kalan_bakiye - toplam_h
+                ws_gider.append_row([datetime.now().strftime('%Y-%m-%d')] + [inputs[k] or 0 for k in gider_ikonlari.keys()], value_input_option='RAW')
+                ws_ayrilan.append_row([datetime.now().strftime('%Y-%m-%d'), limit, yeni_kalan], value_input_option='RAW')
+                st.success(f"Kaydedildi. Kalan: {int(yeni_kalan)}"); st.rerun()
+
+    data_gi = ws_gider.get_all_records()
+    if data_gi:
+        df_gi = pd.DataFrame(data_gi)
+        kats = list(gider_ikonlari.keys())
+        for c in kats:
+            if c in df_gi.columns: df_gi[c] = pd.to_numeric(df_gi[c], errors='coerce').fillna(0)
+        top_gi = df_gi[kats].sum().reset_index()
+        top_gi.columns = ['Kategori', 'Tutar']
+        top_gi['Etiket'] = top_gi['Kategori'].map(lambda x: f"{gider_ikonlari.get(x, '')} {x}")
+        if top_gi['Tutar'].sum() > 0:
+            st.divider()
+            fig_g_pie = px.pie(top_gi[top_gi['Tutar']>0], values='Tutar', names='Etiket', hole=0.4, title="Toplam Gider Dağılımı", color_discrete_sequence=px.colors.qualitative.Pastel)
+            fig_g_pie.update_traces(hovertemplate="%{label}<br>Tutar: %{value:,.0f}")
+            st.plotly_chart(fig_g_pie, use_container_width=True)
+
+# --- SEKME 4: BÜTÇE ---
+with tab_ayrilan:
+    with st.form("b_form"):
+        yeni_l = st.number_input("Yeni Aylık Limit", min_value=0)
+        if st.form_submit_button("Başlat"):
+            ws_ayrilan.append_row([datetime.now().strftime('%Y-%m-%d'), yeni_l, yeni_l], value_input_option='RAW')
+            st.success("Bütçe güncellendi."); st.rerun()
+
+# --- SEKME 5: 🤖 AI ANALİZ (YENİ ÜCRETSİZ ÖZELLİK) ---
+with tab_ai:
+    st.subheader("🤖 Yapay Zeka Finansal Danışman")
+    if "gemini_api_key" not in st.secrets:
+        st.info("Lütfen AI Analizi için Gemini API anahtarınızı ekleyin.")
+    else:
+        if st.button("📊 Verilerimi Analiz Et"):
+            with st.spinner("Yapay zeka verilerini inceliyor..."):
+                try:
+                    # Analiz için verileri özetle
+                    portfoy_ozet = df_v[['Cins', 'Tutar']].to_string(index=False)
+                    guncel_butce = kalan_bakiye
+                    
+                    prompt = f"""
+                    Aşağıdaki finansal verilerimi analiz et ve bir finansal koç gibi yorumla:
+                    1. Portföy Dağılımım: {portfoy_ozet}
+                    2. Toplam Varlığım: {toplam_tl} TL
+                    3. Kalan Aylık Bütçem: {guncel_butce} TL
+
+                    Lütfen şunları yap:
+                    - Portföy dağılımımdaki riskleri veya fırsatları belirt.
+                    - Bütçe kullanımıma göre tavsiye ver.
+                    - Kısa ve öz bir 'Eylem Planı' sun.
+                    Türkçe cevap ver.
+                    """
+                    
+                    response = model.generate_content(prompt)
+                    st.markdown("---")
+                    st.markdown(response.text)
+                except Exception as e:
+                    st.error(f"AI Analiz hatası: {e}")
