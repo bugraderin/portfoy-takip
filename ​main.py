@@ -102,9 +102,13 @@ with tab_portfoy:
             df_p['tarih_tr'] = df_p['tarih'].dt.day.astype(str) + " " + df_p['tarih'].dt.month.map(TR_AYLAR)
             fig_l = px.line(df_p, x='tarih', y='Toplam', markers=True, title="Toplam Varlık Seyri", custom_data=['tarih_tr'])
             fig_l.update_traces(hovertemplate="Tarih: %{customdata[0]}<br>Toplam: %{y:,.0f}")
-            # Seçim kutusunu (box select) ve diğer araçları kaldır, sadece zoom ve pan kalsın
-            fig_l.update_layout(dragmode='pan', modebar_remove=['select2d', 'lasso2d', 'zoomIn2d', 'zoomOut2d', 'autoScale2d', 'resetScale2d', 'toImage'])
-            st.plotly_chart(fig_l, use_container_width=True)
+            
+            # Fare tekerleği ile zoom ve pan aktif, seçim kutusu kapalı
+            fig_l.update_layout(
+                dragmode='pan',
+                modebar_remove=['select2d', 'lasso2d', 'zoomIn2d', 'zoomOut2d', 'autoScale2d', 'resetScale2d', 'toImage']
+            )
+            st.plotly_chart(fig_l, use_container_width=True, config={'scrollZoom': True})
 
 # --- SEKME 2: GELİRLER ---
 with tab_gelir:
@@ -123,7 +127,6 @@ with tab_gelir:
     if data_g:
         df_g = pd.DataFrame(data_g)
         df_g['tarih'] = pd.to_datetime(df_g['tarih'], errors='coerce')
-        # Sütun isimlerini görseldeki gibi eşle
         for col in ["Maaş", "Prim&Promosyon", "Yatırımlar", "Toplam"]:
             if col in df_g.columns: df_g[col] = pd.to_numeric(df_g[col], errors='coerce').fillna(0)
         
@@ -136,9 +139,13 @@ with tab_gelir:
             df_g['tarih_tr'] = df_g['tarih'].dt.month.map(TR_AYLAR) + " " + df_g['tarih'].dt.year.astype(str)
             fig_gl = px.line(df_g, x='tarih', y='Toplam', markers=True, title="Aylık Gelir Gelişimi", custom_data=['tarih_tr'])
             fig_gl.update_traces(hovertemplate="Dönem: %{customdata[0]}<br>Gelir: %{y:,.0f}")
-            # Seçim kutusunu (box select) ve diğer araçları kaldır
-            fig_gl.update_layout(dragmode='pan', modebar_remove=['select2d', 'lasso2d', 'zoomIn2d', 'zoomOut2d', 'autoScale2d', 'resetScale2d', 'toImage'])
-            st.plotly_chart(fig_gl, use_container_width=True)
+            
+            # Fare tekerleği ile zoom ve pan aktif, seçim kutusu kapalı
+            fig_gl.update_layout(
+                dragmode='pan',
+                modebar_remove=['select2d', 'lasso2d', 'zoomIn2d', 'zoomOut2d', 'autoScale2d', 'resetScale2d', 'toImage']
+            )
+            st.plotly_chart(fig_gl, use_container_width=True, config={'scrollZoom': True})
 
 # --- SEKME 3: GİDERLER ---
 with tab_gider:
