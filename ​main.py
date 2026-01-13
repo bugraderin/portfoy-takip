@@ -194,7 +194,7 @@ with tab_ayrilan:
             ws_ayrilan.append_row([datetime.now().strftime('%Y-%m-%d'), yeni_l, yeni_l], value_input_option='RAW')
             st.success("Bütçe güncellendi."); st.rerun()
 
-# --- SEKME 5: 🤖 AI ANALİZ (YENİ ÜCRETSİZ ÖZELLİK) ---
+# --- SEKME 5: 🤖 AI ANALİZ (HATASIZ VERSİYON) ---
 with tab_ai:
     st.subheader("🤖 Yapay Zeka Finansal Danışman")
     if "gemini_api_key" not in st.secrets:
@@ -202,26 +202,25 @@ with tab_ai:
     else:
         if st.button("📊 Verilerimi Analiz Et"):
             with st.spinner("Yapay zeka verilerini inceliyor..."):
-                try:
-                    # Analiz için verileri özetle
-                    portfoy_ozet = df_v[['Cins', 'Tutar']].to_string(index=False)
-                    guncel_butce = kalan_bakiye
-                    
-                    prompt = f"""
-                    Aşağıdaki finansal verilerimi analiz et ve bir finansal koç gibi yorumla:
-                    1. Portföy Dağılımım: {portfoy_ozet}
-                    2. Toplam Varlığım: {toplam_tl} TL
-                    3. Kalan Aylık Bütçem: {guncel_butce} TL
-
-                    Lütfen şunları yap:
-                    - Portföy dağılımımdaki riskleri veya fırsatları belirt.
-                    - Bütçe kullanımıma göre tavsiye ver.
-                    - Kısa ve öz bir 'Eylem Planı' sun.
-                    Türkçe cevap ver.
-                    """
-                    
-                    response = model.generate_content(prompt)
-                    st.markdown("---")
-                    st.markdown(response.text)
-                except Exception as e:
-                    st.error(f"AI Analiz hatası: {e}")
+                # Denenecek model listesi (En yeniden en eskiye)
+                model_names = ['gemini-1.5-flash', 'gemini-1.5-pro', 'gemini-pro']
+                response = None
+                
+                for m_name in model_names:
+                    try:
+                        temp_model = genai.GenerativeModel(m_name)
+                        # Verileri hazırla
+                        portfoy_ozet = df_v[['Cins', 'Tutar']].to_string(index=False)
+                        prompt = f"Finansal koç olarak bu verileri Türkçe yorumla: Varlıklar: {portfoy_ozet}, Toplam: {toplam_tl} TL, Bütçe: {kalan_bakiye} TL."
+                        
+                        response = temp_model.generate_content(prompt)
+                        if response:
+                            st.success(f"Analiz Tamamlandı (Model: {m_name})")
+                            st.markdown("---")
+                            st.markdown(response.text)
+                            break # Başarılı olursa döngüden çık
+                    except Exception:
+                        continue # Hata alırsan bir sonraki modeli dene
+                
+                if not response:
+                    st.error("Maalesef şu an hiçbir AI modeline bağlanılamadı. Lütfen API anahtarınızı ve internet bağlantınızı kontrol edin.")
