@@ -1,22 +1,4 @@
 import streamlit as st
-# --- SAYFA AYARLARI ---
-
-st.markdown("""
-<style>
-div[data-testid="stForm"] small {
-    display: none !important;
-}
-</style>
-""", unsafe_allow_html=True)
-
-# 👇 bundan sonra tüm UI
-st.set_page_config(page_title="Uygulama", layout="wide")
-
-with st.form("form1"):
-    st.text_input("Ad")
-    st.form_submit_button("Gönder")
-  # --- SAYFA AYARLARI ---
-
 import gspread
 from google.oauth2.service_account import Credentials
 import pandas as pd
