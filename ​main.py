@@ -46,7 +46,7 @@ def get_son_bakiye_ve_limit():
 
 tab_portfoy, tab_gelir, tab_gider, tab_ayrilan = st.tabs(["📊 Portföy", "💵 Gelirler", "💸 Giderler", "🛡️ Bütçe"])
 
-# --- SEKME 1: PORTFÖY (ENSTRÜMANLAR VE PASTA GERİ GETİRİLDİ) ---
+# --- SEKME 1: PORTFÖY ---
 with tab_portfoy:
     enstruman_bilgi = {'Hisse Senedi': '📈', 'Altın': '🟡', 'Gümüş': '⚪', 'Fon': '🏦', 'Döviz': '💵', 'Kripto': '₿', 'Mevduat': '💰', 'BES': '🛡️'}
     enstrumanlar = list(enstruman_bilgi.keys())
@@ -72,7 +72,6 @@ with tab_portfoy:
         
         st.metric("Toplam Varlık", f"{int(guncel['Toplam']):,.0f}".replace(",", "."), f"{int(guncel['Toplam'] - onceki['Toplam']):,.0f}")
 
-        # Enstrüman Metrikleri
         varlik_data = []
         for e in enstrumanlar:
             if guncel[e] > 0:
@@ -92,6 +91,8 @@ with tab_portfoy:
         with sub_tab1:
             df_v['Etiket'] = df_v['Icon'] + " " + df_v['Cins']
             fig_p = px.pie(df_v, values='Tutar', names='Etiket', hole=0.4, color_discrete_sequence=px.colors.qualitative.Pastel)
+            # Hover düzenlemesi: Sadece isim ve tutar görünecek şekilde ayarlandı
+            fig_p.update_traces(hovertemplate="%{label}<br>Tutar: %{value:,.0f}")
             st.plotly_chart(fig_p, use_container_width=True)
             
         with sub_tab2:
