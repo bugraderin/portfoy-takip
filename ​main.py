@@ -6,7 +6,7 @@ from datetime import datetime, timedelta
 import plotly.express as px
 
 # --- SAYFA AYARLARI ---
-st.set_page_config(page_title="Finansal Panel", layout="wide")
+st.set_page_config(page_title="Portföy ve Gider Yönetimi", layout="wide")
 
 # --- 1. GOOGLE SHEETS BAĞLANTISI ---
 scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
@@ -26,7 +26,7 @@ except Exception as e:
 # CSS: Artı/Eksi butonlarını gizler
 st.markdown("""<style> input::-webkit-outer-spin-button, input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; } input[type=number] { -moz-appearance: textfield; } </style>""", unsafe_allow_html=True)
 
-# --- YARDIMCI FONKSİYONLAR ---
+# --- YARDIMCI FONKSİYON: BÜTÇE DURUMU ---
 def get_son_butce_durumu():
     try:
         data = ws_ayrilan.get_all_records()
@@ -40,10 +40,18 @@ def get_son_butce_durumu():
 # --- ANA SEKMELER ---
 tab_portfoy, tab_gelir, tab_gider, tab_ayrilan = st.tabs(["📊 Portföy Analizi", "💵 Gelirler", "💸 Giderler", "🛡️ Bütçe Planlama"])
 
-# --- SEKME 1: PORTFÖY (PERFORMANS VE GELİŞİM) ---
+# --- SEKME 1: PORTFÖY (Mevcut yapınız korunmuştur) ---
 with tab_portfoy:
     enstruman_bilgi = {'Hisse Senedi': '📈', 'Altın': '🟡', 'Gümüş': '⚪', 'Fon': '🏦', 'Döviz': '💵', 'Kripto': '₿', 'Mevduat': '💰', 'BES': '🛡️'}
     enstrumanlar = list(enstruman_bilgi.keys())
+
+    with st.sidebar:
+        st.header("📥 Portföy Güncelle")
+        with st.form("p_form", clear_on_submit=True):
+            p_in = {e: st.number_input(f"{enstruman_bilgi[e]} {e} (TL)", min_value=0.0, value=None, format="%.f") for e in enstrumanlar}
+            if st.form_submit_button("🚀 Kaydet"):
+                ws_portfoy.append_row([datetime.now().strftime('%Y-%m-%d')] + [p_in[e] or 0 for e in enstrumanlar], value_input_option='RAW')
+                st.rerun()
 
     data_p = ws_portfoy.get_all_records()
     if data_p:
@@ -58,7 +66,7 @@ with tab_portfoy:
         st.metric("Toplam Varlık", f"{int(guncel['Toplam']):,.0f} TL".replace(",", "."))
         
         st.divider()
-        # Performans Göstergeleri
+        st.subheader("⏱️ Performans ve Gelişim")
         periyotlar = {"1 Gün": 1, "1 Ay": 30, "3 Ay": 90, "6 Ay": 180, "9 Ay": 270, "1 Yıl": 365, "3 Yıl": 1095, "5 Yıl": 1825}
         secim = st.selectbox("Kıyaslama süresi:", list(periyotlar.keys()))
         
@@ -68,98 +76,104 @@ with tab_portfoy:
         
         t_fark = guncel['Toplam'] - baslangic['Toplam']
         b_yuzde = (t_fark / baslangic['Toplam'] * 100) if baslangic['Toplam'] > 0 else 0
-        st.success(f"**{secim}** öncesine göre büyüme: **%{b_yuzde:.2f}**")
+        st.success(f"**{secim}** öncesine göre: **%{b_yuzde:.2f}**")
 
-        # Gelişim Grafiği
-        fig_line = px.line(df_p, x='tarih', y='Toplam', markers=True, title="Varlık Gelişim Grafiği")
+        # Gelişim Grafiği (Line Chart)
+        fig_line = px.line(df_p, x='tarih', y='Toplam', markers=True, title="Toplam Varlık Gelişimi")
         st.plotly_chart(fig_line, use_container_width=True)
 
-# --- SEKME 3: GİDERLER (DİNAMİK ETİKETLER VE DOĞRU SIRALAMA) ---
+# --- SEKME 3: GİDERLER (SHEET SIRALAMASI VE SEÇENEKLER DÜZELTİLDİ) ---
 with tab_gider:
-    st.subheader("💸 Harcama Girişi")
+    st.subheader("💸 Gider Girişi")
     kalan_bakiye, limit = get_son_butce_durumu()
     st.info(f"💰 Kalan Bütçeniz: **{kalan_bakiye:,.0f} TL**")
     
     with st.form("gi_form", clear_on_submit=True):
-        # Üst Panel: Dinamik Seçimler
-        c1, c2, c3 = st.columns(3)
+        st.write("### 🏷️ Kategori Bazlı Harcamalar")
         
+        c1, c2, c3 = st.columns(3)
+        # GENEL GİDERLER (TÜRLER)
         with c1:
-            st.write("📦 **Genel**")
-            g_tur = st.selectbox("Tür", ["Sigara", "Kozmetik", "Kırtasiye", "Evcil Hayvan", "Giyim", "Eğlence", "Diğer"])
-            # Dinamik Etiket: Seçtiğin tür neyse kutunun ismi o olur
+            g_tur = st.selectbox("Genel Gider Tipi", ["Sigara", "Kozmetik", "Kırtasiye", "Evcil Hayvan", "Giyim", "Eğlence", "Diğer"])
             g_tutar = st.number_input(f"{g_tur} Tutarı", min_value=0, value=None, format="%d")
         
+        # ARABA (TÜRLER)
         with c2:
-            st.write("🚗 **Araba**")
-            a_tur = st.selectbox("Tür", ["Benzin", "Bakım", "Diğer"])
+            a_tur = st.selectbox("Araba Gider Tipi", ["Benzin", "Bakım", "Diğer"])
             a_tutar = st.number_input(f"{a_tur} Tutarı", min_value=0, value=None, format="%d")
             
+        # KREDİ (TÜRLER)
         with c3:
-            st.write("🏦 **Kredi**")
-            k_tur = st.selectbox("Tür", ["Banka Kredisi", "Öğrenim Kredisi", "Diğer"])
+            k_tur = st.selectbox("Kredi Tipi", ["Banka Kredisi", "Öğrenim Kredisi", "Diğer"])
             k_tutar = st.number_input(f"{k_tur} Tutarı", min_value=0, value=None, format="%d")
 
         st.divider()
-        st.write("🏠 **Sabit Giderler**")
+        st.write("### 🏠 Sabit Harcamalar")
         
-        # Ekran görüntündeki sıralamaya göre alt panel
-        c4, c5, c6, c7 = st.columns(4)
+        # SHEET SÜTUN SIRALAMASINA GÖRE GİRİŞLER (Görüntüdeki Sıralama)
+        c4, c5, c6 = st.columns(3)
         market = c4.number_input("Market", min_value=0, value=None)
         kira = c5.number_input("Kira", min_value=0, value=None)
         aidat = c6.number_input("Aidat", min_value=0, value=None)
-        kk = c7.number_input("Kredi Kartı", min_value=0, value=None)
         
-        c8, c9, c10, c11 = st.columns(4)
+        c7, c8, c9 = st.columns(3)
+        kk = c7.number_input("Kredi Kartı", min_value=0, value=None)
         egitim = c8.number_input("Eğitim", min_value=0, value=None)
         seyahat = c9.number_input("Seyahat", min_value=0, value=None)
+        
+        c10, c11, c12 = st.columns(3)
         saglik = c10.number_input("Sağlık", min_value=0, value=None)
         cocuk = c11.number_input("Çocuk", min_value=0, value=None)
-        
-        ulashim = st.number_input("Toplu Taşıma", min_value=0, value=None)
+        ulashim = c12.number_input("Toplu Taşıma", min_value=0, value=None)
 
-        if st.form_submit_button("✅ Kaydet ve Bütçeden Düş"):
-            # GÖRSELDEKİ SÜTUN SIRALAMASI (A'dan M'ye):
-            # tarih(A), Genel(B), Market(C), Kira(D), Aidat(E), KK(F), Kredi(G), Eğitim(H), Araba(I), Seyahat(J), Sağlık(K), Çocuk(L), TopluTaşıma(M)
+        if st.form_submit_button("✅ Harcamayı Kaydet"):
+            # ÖNEMLİ: Sheets'teki sütun sırasına göre liste (A=tarih, B=Genel, C=Market, D=Kira...)
+            # Ekran görüntündeki sıralama: Tarih, Genel, Market, Kira, Aidat, Kredi Kartı, Kredi, Eğitim, Araba, Seyahat, Sağlık, Çocuk, Toplu Taşıma
             harcama_satiri = [
-                datetime.now().strftime('%Y-%m-%d'), # A
-                g_tutar or 0,                        # B (Genel)
-                market or 0,                         # C (Market)
-                kira or 0,                           # D (Kira)
-                aidat or 0,                          # E (Aidat)
-                kk or 0,                             # F (Kredi Kartı)
-                k_tutar or 0,                        # G (Kredi)
-                egitim or 0,                         # H (Eğitim)
-                a_tutar or 0,                        # I (Araba)
-                seyahat or 0,                        # J (Seyahat)
-                saglik or 0,                         # K (Sağlık)
-                cocuk or 0,                          # L (Çocuk)
-                ulashim or 0,                        # M (Toplu Taşıma)
-                f"Türler: {g_tur} | {a_tur} | {k_tur}" # N (Notlar)
+                datetime.now().strftime('%Y-%m-%d'), # A: tarih
+                g_tutar or 0,                        # B: Genel Giderler
+                market or 0,                         # C: Market
+                kira or 0,                           # D: Kira
+                aidat or 0,                          # E: Aidat
+                kk or 0,                             # F: Kredi Kartı
+                k_tutar or 0,                        # G: Kredi (Seçilen tip)
+                egitim or 0,                         # H: Eğitim
+                a_tutar or 0,                        # I: Araba (Seçilen tip)
+                seyahat or 0,                        # J: Seyahat
+                saglik or 0,                         # K: Sağlık
+                cocuk or 0,                          # L: Çocuk
+                ulashim or 0,                        # M: Toplu Taşıma
+                f"Not: G:{g_tur}, A:{a_tur}, K:{k_tur}" # N: Açıklama
             ]
             
-            # 1. Giderler Sayfasına Yaz
+            # 1. Giderler sayfasına yaz
             ws_gider.append_row(harcama_satiri, value_input_option='RAW')
             
-            # 2. Bütçe Sayfasını Güncelle (Kalanı Düş)
-            toplam_h = sum([x for x in harcama_satiri[1:13] if isinstance(x, (int, float))])
-            yeni_kalan = kalan_bakiye - toplam_h
+            # 2. Bütçe Sayfası Hesaplama (Devreden = Eski Kalan)
+            toplam_harcama = sum([x for x in harcama_satiri[1:13] if isinstance(x, (int, float))])
+            yeni_kalan = kalan_bakiye - toplam_harcama
             ws_ayrilan.append_row([datetime.now().strftime('%Y-%m-%d'), limit, yeni_kalan, kalan_bakiye], value_input_option='RAW')
             
-            st.success(f"Başarıyla kaydedildi. Yeni bakiye: {yeni_kalan} TL")
+            st.success(f"Kaydedildi! Yeni Bakiye: {yeni_kalan} TL")
             st.rerun()
 
-# --- DİĞER SEKMELER (GELİR VE BÜTÇE LİMİTİ) ---
+# --- SEKME 4: BÜTÇE PLANI ---
 with tab_ayrilan:
-    with st.form("a_f"):
-        l = st.number_input("Aylık Bütçe Limiti", min_value=0)
-        if st.form_submit_button("Limit Tanımla"):
-            ws_ayrilan.append_row([datetime.now().strftime('%Y-%m-%d'), l, l, 0], value_input_option='RAW')
+    st.subheader("🛡️ Limit Tanımla")
+    with st.form("a_form", clear_on_submit=True):
+        y_lim = st.number_input("Aylık Limit", min_value=0, value=None)
+        if st.form_submit_button("Bütçeyi Başlat"):
+            ws_ayrilan.append_row([datetime.now().strftime('%Y-%m-%d'), y_lim or 0, y_lim or 0, 0], value_input_option='RAW')
+            st.success("Yeni limit tanımlandı!")
             st.rerun()
 
+# --- SEKME 2: GELİRLER ---
 with tab_gelir:
-    with st.form("g_f"):
-        m = st.number_input("Maaş", min_value=0)
-        if st.form_submit_button("Gelir Kaydet"):
-            ws_gelir.append_row([datetime.now().strftime('%Y-%m-%d'), m, 0, 0], value_input_option='RAW')
-            st.rerun()
+    st.subheader("💵 Gelir Girişi")
+    with st.form("g_form", clear_on_submit=True):
+        m = st.number_input("Maaş", min_value=0, value=None)
+        p = st.number_input("Prim", min_value=0, value=None)
+        y = st.number_input("Yatırım", min_value=0, value=None)
+        if st.form_submit_button("Kaydet"):
+            ws_gelir.append_row([datetime.now().strftime('%Y-%m-%d'), m or 0, p or 0, y or 0], value_input_option='RAW')
+            st.success("Gelir eklendi.")
