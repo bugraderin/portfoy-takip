@@ -2,13 +2,14 @@ import streamlit as st
 import gspread
 from google.oauth2.service_account import Credentials
 import pandas as pd
-from datetime import datetime, timedelta
+from datetime import datetime
 import plotly.express as px
+import plotly.io as pio
 
 # --- SAYFA AYARLARI ---
 st.set_page_config(page_title="Finansal Takip", layout="wide")
 
-# Türkçe Ay Sözlüğü (Grafikler için)
+# Türkçe Ay ve Gün İsimleri Ayarı
 TR_AYLAR = {1: "Ocak", 2: "Şubat", 3: "Mart", 4: "Nisan", 5: "Mayıs", 6: "Haziran", 
             7: "Temmuz", 8: "Ağustos", 9: "Eylül", 10: "Ekim", 11: "Kasım", 12: "Aralık"}
 
@@ -27,14 +28,12 @@ except Exception as e:
     st.error(f"Bağlantı Hatası: {e}")
     st.stop()
 
-# CSS: Metrik ve Form Düzenleme
+# CSS: Metrik ve Görsel Düzenleme
 st.markdown("""
     <style>
     [data-testid="stMetricValue"] { font-size: 18px !important; }
     [data-testid="stMetricLabel"] { font-size: 14px !important; }
     div[data-testid="stMetric"] { background-color: #f8f9fa; padding: 10px; border-radius: 8px; border: 1px solid #eee; }
-    input::-webkit-outer-spin-button, input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
-    input[type=number] { -moz-appearance: textfield; }
     </style>
     """, unsafe_allow_html=True)
 
@@ -53,16 +52,12 @@ tab_portfoy, tab_gelir, tab_gider, tab_ayrilan = st.tabs(["📊 Portföy", "💵
 
 # --- SEKME 1: PORTFÖY ---
 with tab_portfoy:
-    enstruman_bilgi = {'Hisse Senedi': '📈', 'Altın': '🟡', 'Gümüş': '⚪', 'Fon': '🏦', 'Döviz': '💵', 'Kripto': '₿', 'Mevduat': '💰', 'BES': '🛡️'}
+    # İkonlar ve Enstrümanlar geri getirildi
+    enstruman_bilgi = {
+        'Hisse Senedi': '📈', 'Altın': '🟡', 'Gümüş': '⚪', 'Fon': '🏦', 
+        'Döviz': '💵', 'Kripto': '₿', 'Mevduat': '💰', 'BES': '🛡️'
+    }
     enstrumanlar = list(enstruman_bilgi.keys())
-
-    with st.sidebar:
-        st.header("📥 Portföy Güncelle")
-        with st.form("p_form", clear_on_submit=True):
-            p_in = {e: st.number_input(f"{enstruman_bilgi[e]} {e}", min_value=0.0, value=None, format="%.f") for e in enstrumanlar}
-            if st.form_submit_button("🚀 Kaydet"):
-                ws_portfoy.append_row([datetime.now().strftime('%Y-%m-%d')] + [p_in[e] or 0 for e in enstrumanlar], value_input_option='RAW')
-                st.rerun()
 
     data_p = ws_portfoy.get_all_records()
     if data_p:
@@ -78,7 +73,6 @@ with tab_portfoy:
 
         st.metric("Toplam Varlık", f"{int(guncel['Toplam']):,.0f}".replace(",", "."), f"{int(guncel['Toplam'] - onceki['Toplam']):,.0f}")
         
-        # SIRALI METRİKLER (Hata düzeltilmiş versiyon)
         varlik_data = []
         for e in enstrumanlar:
             if guncel[e] > 0:
@@ -89,21 +83,25 @@ with tab_portfoy:
         df_v = pd.DataFrame(varlik_data).sort_values(by="Tutar", ascending=False)
         
         cols = st.columns(4)
-        for i, row in enumerate(df_v.iterrows()): # row.itertuples() yerine iterrows() kullanımı hatayı çözer
-            val = row[1]
+        for i, (index, row) in enumerate(df_v.iterrows()):
             with cols[i % 4]:
-                st.metric(f"{val['Icon']} {val['Cins']}", f"{int(val['Tutar']):,.0f}".replace(",", "."), f"%{val['Yüzde']:.2f}")
+                st.metric(f"{row['Icon']} {row['Cins']}", f"{int(row['Tutar']):,.0f}".replace(",", "."), f"%{row['Yüzde']:.2f}")
 
         st.divider()
         sub_tab1, sub_tab2 = st.tabs(["🥧 Varlık Dağılımı", "📈 Gelişim Analizi"])
         with sub_tab1:
-            fig_p = px.pie(df_v, values='Tutar', names='Cins', hole=0.4, color_discrete_sequence=px.colors.qualitative.Pastel)
+            # Pasta grafiğine ikonları geri ekleme
+            df_v['Etiket'] = df_v['Icon'] + " " + df_v['Cins']
+            fig_p = px.pie(df_v, values='Tutar', names='Etiket', hole=0.4, color_discrete_sequence=px.colors.qualitative.Pastel)
             fig_p.update_traces(textinfo='percent+label')
             st.plotly_chart(fig_p, use_container_width=True)
         with sub_tab2:
-            fig_l = px.line(df_p, x='tarih', y='Toplam', markers=True, title="Toplam Varlık Seyri")
-            fig_l.update_xaxes(title="Tarih")
-            fig_l.update_yaxes(title="")
+            # Çizgi grafiğinde tarihleri Türkçeye çevirme
+            df_p['tarih_tr'] = df_p['tarih'].dt.day.astype(str) + " " + df_p['tarih'].dt.month.map(TR_AYLAR)
+            fig_l = px.line(df_p, x='tarih', y='Toplam', markers=True, title="Toplam Varlık Seyri",
+                            custom_data=['tarih_tr'])
+            fig_l.update_traces(hovertemplate="Tarih: %{customdata[0]}<br>Toplam: %{y:,.0f}")
+            fig_l.update_xaxes(dtick="M1", tickformat="%b %Y", title="Dönem")
             st.plotly_chart(fig_l, use_container_width=True)
 
 # --- SEKME 2: GELİRLER ---
@@ -125,7 +123,7 @@ with tab_gelir:
         df_g['tarih'] = pd.to_datetime(df_g['tarih'], errors='coerce')
         df_g = df_g.dropna(subset=['tarih'])
         
-        # Google Sheets sütun isimleriyle eşleştirme
+        # Sütun eşleme (Görseldeki Prim&Promosyon ve Yatırımlar isimlerine göre)
         for col in ["Maaş", "Prim&Promosyon", "Yatırımlar", "Toplam"]:
             if col in df_g.columns: df_g[col] = pd.to_numeric(df_g[col], errors='coerce').fillna(0)
         
@@ -134,7 +132,6 @@ with tab_gelir:
         
         with g_sub1:
             son_gelir = df_g.iloc[-1]
-            st.metric("Son Toplam Gelir", f"{int(son_gelir.get('Toplam', 0)):,.0f}".replace(",", "."))
             g_pie_df = pd.DataFrame({
                 'Kategori': ["Maaş", "Prim & Promosyon", "Yatırımlar"],
                 'Tutar': [son_gelir.get("Maaş", 0), son_gelir.get("Prim&Promosyon", 0), son_gelir.get("Yatırımlar", 0)]
@@ -142,18 +139,19 @@ with tab_gelir:
             st.plotly_chart(px.pie(g_pie_df[g_pie_df['Tutar']>0], values='Tutar', names='Kategori', hole=0.4), use_container_width=True)
             
         with g_sub2:
-            # Türkçe Ay isimlerini eksene ekleme
-            df_g['ay_adi'] = df_g['tarih'].dt.month.map(TR_AYLAR) + " " + df_g['tarih'].dt.year.astype(str)
-            fig_gl = px.line(df_g, x='tarih', y='Toplam', markers=True, title="Aylık Toplam Gelir Gelişimi")
+            # Gelir grafiği Türkçe tarih formatı
+            df_g['tarih_tr'] = df_g['tarih'].dt.month.map(TR_AYLAR) + " " + df_g['tarih'].dt.year.astype(str)
+            fig_gl = px.line(df_g, x='tarih', y='Toplam', markers=True, title="Aylık Toplam Gelir Gelişimi",
+                             custom_data=['tarih_tr'])
+            fig_gl.update_traces(hovertemplate="Dönem: %{customdata[0]}<br>Gelir: %{y:,.0f}")
             fig_gl.update_xaxes(title="Dönem")
-            fig_gl.update_yaxes(title="")
             st.plotly_chart(fig_gl, use_container_width=True)
 
 # --- SEKME 3: GİDERLER ---
 with tab_gider:
     kalan, limit = get_son_bakiye_ve_limit()
     st.info(f"💰 Kalan Bütçe: **{int(kalan):,.0f}**")
-    # Giderler bölümü önceki stabil yapısıyla devam eder...
+    # Giderler bölümü stabil yapısıyla devam eder...
 
 # --- SEKME 4: BÜTÇE ---
 with tab_ayrilan:
