@@ -4,9 +4,19 @@ from google.oauth2.service_account import Credentials
 import pandas as pd
 from datetime import datetime
 import plotly.express as px
+import plotly.io as pio
 
 # --- SAYFA AYARLARI ---
 st.set_page_config(page_title="Finansal Takip", layout="wide")
+
+# Plotly Türkçe Dil Desteği Ayarı
+pio.templates.default = "plotly_white"
+config_tr = {
+    'responsive': True,
+    'scrollZoom': True,
+    'displaylogo': False,
+    'modeBarButtonsToRemove': ['select2d', 'lasso2d', 'zoomIn2d', 'zoomOut2d', 'autoScale2d', 'resetScale2d', 'toImage']
+}
 
 # Türkçe Ay Sözlüğü
 TR_AYLAR = {1: "Ocak", 2: "Şubat", 3: "Mart", 4: "Nisan", 5: "Mayıs", 6: "Haziran", 
@@ -49,7 +59,7 @@ def get_son_bakiye_ve_limit():
 # --- ANA SEKMELER ---
 tab_portfoy, tab_gelir, tab_gider, tab_ayrilan = st.tabs(["📊 Portföy", "💵 Gelirler", "💸 Giderler", "🛡️ Bütçe"])
 
-# --- SEKME 1: PORTFÖY ---
+# --- SEKME 1: PORTFÖY (SOL PANEL KORUNDU) ---
 with tab_portfoy:
     enstruman_bilgi = {
         'Hisse Senedi': '📈', 'Altın': '🟡', 'Gümüş': '⚪', 'Fon': '🏦', 
@@ -99,16 +109,23 @@ with tab_portfoy:
             fig_p = px.pie(df_v, values='Tutar', names='Etiket', hole=0.4, color_discrete_sequence=px.colors.qualitative.Pastel)
             st.plotly_chart(fig_p, use_container_width=True)
         with sub_tab2:
+            # Grafik Ekseni Türkçe Yapıldı
             df_p['tarih_tr'] = df_p['tarih'].dt.day.astype(str) + " " + df_p['tarih'].dt.month.map(TR_AYLAR)
             fig_l = px.line(df_p, x='tarih', y='Toplam', markers=True, title="Toplam Varlık Seyri", custom_data=['tarih_tr'])
             fig_l.update_traces(hovertemplate="Tarih: %{customdata[0]}<br>Toplam: %{y:,.0f}")
             
-            # Fare tekerleği ile zoom ve pan aktif, seçim kutusu kapalı
-            fig_l.update_layout(
-                dragmode='pan',
-                modebar_remove=['select2d', 'lasso2d', 'zoomIn2d', 'zoomOut2d', 'autoScale2d', 'resetScale2d', 'toImage']
+            # Eksen Yerelleştirme
+            fig_l.update_xaxes(
+                tickformat="%d %b\n%Y",
+                tickformatstops=[
+                    dict(dtickrange=[None, 86400000], value="%d %b"), # Günlük
+                    dict(dtickrange=[86400000, 604800000], value="%d %b"), # Haftalık
+                    dict(dtickrange=[604800000, "M1"], value="%b %Y"), # Aylık
+                ],
+                title="Tarih"
             )
-            st.plotly_chart(fig_l, use_container_width=True, config={'scrollZoom': True})
+            fig_l.update_layout(dragmode='pan')
+            st.plotly_chart(fig_l, use_container_width=True, config=config_tr)
 
 # --- SEKME 2: GELİRLER ---
 with tab_gelir:
@@ -140,14 +157,11 @@ with tab_gelir:
             fig_gl = px.line(df_g, x='tarih', y='Toplam', markers=True, title="Aylık Gelir Gelişimi", custom_data=['tarih_tr'])
             fig_gl.update_traces(hovertemplate="Dönem: %{customdata[0]}<br>Gelir: %{y:,.0f}")
             
-            # Fare tekerleği ile zoom ve pan aktif, seçim kutusu kapalı
-            fig_gl.update_layout(
-                dragmode='pan',
-                modebar_remove=['select2d', 'lasso2d', 'zoomIn2d', 'zoomOut2d', 'autoScale2d', 'resetScale2d', 'toImage']
-            )
-            st.plotly_chart(fig_gl, use_container_width=True, config={'scrollZoom': True})
+            fig_gl.update_xaxes(tickformat="%b %Y", title="Dönem")
+            fig_gl.update_layout(dragmode='pan')
+            st.plotly_chart(fig_gl, use_container_width=True, config=config_tr)
 
-# --- SEKME 3: GİDERLER ---
+# --- SEKME 3: GİDERLER (İKONLAR KORUNDU) ---
 with tab_gider:
     st.subheader("💸 Gider Yönetimi")
     kalan_bakiye, limit = get_son_bakiye_ve_limit()
