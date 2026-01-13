@@ -4,10 +4,23 @@ from google.oauth2.service_account import Credentials
 import pandas as pd
 from datetime import datetime, timedelta
 import plotly.express as px
+import yfinance as yf
 
 # --- SAYFA AYARLARI ---
 st.set_page_config(page_title="Portföy Takip", layout="wide")
-st.title("📊 Portföy Yönetim Paneli")
+st.title("📊 Akıllı Portföy Yönetimi")
+
+# --- KUR ÇEKME FONKSİYONU ---
+@st.cache_data(ttl=3600) # Kurları saatte bir günceller
+def kurlari_getir():
+    try:
+        usd = yf.Ticker("USDTRY=X").history(period="1d")['Close'].iloc[-1]
+        eur = yf.Ticker("EURTRY=X").history(period="1d")['Close'].iloc[-1]
+        return usd, eur
+    except:
+        return 30.1, 33.1 # Hata durumunda varsayılan (yaklaşık) kurlar
+
+usd_kur, eur_kur = kurlari_getir()
 
 # --- 1. GOOGLE SHEETS BAĞLANTISI ---
 scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
@@ -21,28 +34,29 @@ except Exception as e:
     st.stop()
 
 # --- 2. VERİ GİRİŞİ VE İKON TANIMLARI ---
+# Döviz'i USD ve EUR olarak ayırdık
 enstruman_bilgi = {
     'Hisse Senedi': '📈', 'Altın': '🟡', 'Gümüş': '⚪', 'Fon': '🏦',
-    'Döviz': '💵', 'Kripto': '₿', 'Mevduat': '💰', 'BES': '🛡️'
+    'USD': '💵', 'EUR': '💶', 'Kripto': '₿', 'Mevduat': '💰', 'BES': '🛡️'
 }
 enstrumanlar = list(enstruman_bilgi.keys())
 
 with st.sidebar:
     st.header("📥 Veri Girişi")
-    st.caption("Değerleri yazıp en alttaki butona basın.")
+    st.write(f"📢 **Güncel Kurlar:** USD: {usd_kur:.2f} | EUR: {eur_kur:.2f}")
     
     with st.form("veri_formu", clear_on_submit=True):
         yeni_degerler = []
         for e in enstrumanlar:
-            label = f"{enstruman_bilgi[e]} {e} (TL)"
-            val = st.number_input(label, min_value=0.0, step=100.0)
+            label = f"{enstruman_bilgi[e]} {e} " + ("(Miktar)" if e in ['USD', 'EUR'] else "(TL)")
+            val = st.number_input(label, min_value=0.0, step=1.0 if e in ['USD', 'EUR'] else 100.0)
             yeni_degerler.append(val)
-        submit = st.form_submit_button("🚀 Verileri Buluta Kaydet")
+        submit = st.form_submit_button("🚀 Verileri Kaydet")
 
 if submit:
     yeni_satir = [datetime.now().strftime('%Y-%m-%d')] + yeni_degerler
     worksheet.append_row(yeni_satir)
-    st.toast("Veriler başarıyla kaydedildi!", icon='✅')
+    st.toast("Veriler kaydedildi!", icon='✅')
     st.rerun()
 
 # --- 3. VERİ İŞLEME ---
@@ -50,88 +64,81 @@ data = worksheet.get_all_records()
 if data:
     df = pd.DataFrame(data)
     for col in enstrumanlar:
-        if col in df.columns:
-            df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
+        df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
     
-    if 'tarih' in df.columns:
-        df['tarih'] = pd.to_datetime(df['tarih'])
-        df = df.sort_values('tarih')
+    # Dövizleri TL'ye çevirme
+    df['USD_TL'] = df['USD'] * usd_kur
+    df['EUR_TL'] = df['EUR'] * eur_kur
     
-    df['Toplam'] = df[enstrumanlar].sum(axis=1)
+    # Toplam hesaplama (USD ve EUR'nun miktarını değil, TL karşılığını topluyoruz)
+    diger_kalemler = [e for e in enstrumanlar if e not in ['USD', 'EUR']]
+    df['Toplam'] = df[diger_kalemler].sum(axis=1) + df['USD_TL'] + df['EUR_TL']
+    
+    df['tarih'] = pd.to_datetime(df['tarih'])
+    df = df.sort_values('tarih')
 
     # ÖZET KARTLARI
     guncel_verisi = df.iloc[-1]
-    guncel_toplam = guncel_verisi['Toplam']
-    c1, c2, c3 = st.columns(3)
-    c1.metric("Toplam Varlık", f"{guncel_toplam:,.0f} TL")
-    if len(df) > 1:
-        fark = guncel_toplam - df['Toplam'].iloc[-2]
-        yuzde_fark = (fark / df['Toplam'].iloc[-2]) * 100
-        c2.metric("Günlük Değişim", f"{fark:,.0f} TL", f"%{yuzde_fark:.2f}")
-    c3.metric("Kayıt Sayısı", len(df))
+    st.columns(3)[0].metric("Toplam Varlık", f"{guncel_verisi['Toplam']:,.0f} TL")
 
     st.divider()
 
     # --- 4. GRAFİKLER ---
-    t1, t2 = st.tabs(["📈 Gelişim Grafiği", "🥧 Varlık Dağılımı"])
+    t1, t2 = st.tabs(["📈 Gelişim", "🥧 Varlık Dağılımı"])
     
     with t1:
-        st.subheader("Toplam Portföy Gelişimi")
         st.line_chart(df.set_index('tarih')['Toplam'])
         
     with t2:
-        st.subheader("Güncel Varlık Dağılımı")
-        son_durum = df[enstrumanlar].iloc[-1]
+        # Görselleştirme için verileri TL karşılıklarıyla hazırlıyoruz
+        pasta_verisi = {
+            'Hisse Senedi': guncel_verisi['Hisse Senedi'],
+            'Altın': guncel_verisi['Altın'],
+            'Gümüş': guncel_verisi['Gümüş'],
+            'Fon': guncel_verisi['Fon'],
+            'USD ($)': guncel_verisi['USD_TL'],
+            'EUR (€)': guncel_verisi['EUR_TL'],
+            'Kripto': guncel_verisi['Kripto'],
+            'Mevduat': guncel_verisi['Mevduat'],
+            'BES': guncel_verisi['BES']
+        }
         
-        labels = [f"{enstruman_bilgi[e]} {e}" for e in son_durum.index if son_durum[e] > 0]
-        values = [v for v in son_durum if v > 0]
+        pasta_df = pd.DataFrame({
+            'Enstrüman': [f"{enstruman_bilgi.get(k.split(' ')[0], '💰')} {k}" for k, v in pasta_verisi.items() if v > 0],
+            'Değer': [v for v in pasta_verisi.values() if v > 0]
+        })
         
-        if values:
-            fig = px.pie(names=labels, values=values, 
-                         hole=0.4, color_discrete_sequence=px.colors.qualitative.Pastel)
-            
-            # YASLANMA DÜZELTME: textposition='inside' metni dilimlerin içine alır, 
-            # insidetextorientation='horizontal' metni her zaman düz okutur.
-            fig.update_traces(
-                textinfo='percent+label',
-                textposition='inside', 
-                insidetextorientation='horizontal',
-                hovertemplate="<b>%{label}</b><br>Değer: %{value:,.0f} TL<br>Pay: %{percent}"
-            )
-            
-            # Grafiğin etrafındaki boşluğu artırarak metinlerin sıkışmasını engelledik
-            fig.update_layout(
-                margin=dict(t=50, b=50, l=50, r=50), 
-                height=500, 
-                showlegend=False
-            )
+        # SIRALAMA: Büyükten küçüğe
+        pasta_df = pasta_df.sort_values(by='Değer', ascending=False)
+        
+        if not pasta_df.empty:
+            fig = px.pie(pasta_df, values='Değer', names='Enstrüman', hole=0.4,
+                         color_discrete_sequence=px.colors.qualitative.Pastel)
+            fig.update_traces(textinfo='percent+label', textposition='inside')
+            fig.update_layout(margin=dict(t=30, b=30, l=30, r=30), showlegend=False)
             st.plotly_chart(fig, use_container_width=True)
 
     st.divider()
 
-    # --- 5. PERFORMANS ANALİZİ ---
-    st.subheader("⏱️ Dönemsel Performans Analizi")
-    periyotlar = {"1 Gün": 1, "1 Ay": 30, "3 Ay": 90, "6 Ay": 180, "1 Yıl": 365}
-    secim = st.selectbox("Kıyaslama süresi seçin:", list(periyotlar.keys()))
+    # --- 5. PERFORMANS KARTLARI (Büyükten Küçüğe) ---
+    st.subheader("⏱️ Varlık Bazlı Durum (Büyükten Küçüğe)")
     
-    hedef_tarih = datetime.now() - timedelta(days=periyotlar[secim])
-    gecmis_df = df[df['tarih'] <= hedef_tarih]
-    baslangic = gecmis_df.iloc[-1] if not gecmis_df.empty else df.iloc[0]
+    # Kartlar için güncel TL değerlerini içeren bir liste oluşturup sıralıyoruz
+    kart_listesi = []
+    for e in enstrumanlar:
+        if e == 'USD': val = guncel_verisi['USD_TL']
+        elif e == 'EUR': val = guncel_verisi['EUR_TL']
+        else: val = guncel_verisi[e]
+        
+        if val > 0:
+            kart_listesi.append({'isim': f"{enstruman_bilgi[e]} {e}", 'deger': val})
     
-    st.info(f"Dönem başı ({baslangic['tarih'].date()}): **{baslangic['Toplam']:,.0f} TL**")
+    # Sırala
+    kart_listesi = sorted(kart_listesi, key=lambda x: x['deger'], reverse=True)
     
-    perf_cols = st.columns(4)
-    for i, e in enumerate(enstrumanlar):
-        v_eski = baslangic[e]
-        v_yeni = guncel_verisi[e]
-        if v_eski > 0:
-            degisim = ((v_yeni - v_eski) / v_eski) * 100
-            perf_cols[i % 4].metric(f"{enstruman_bilgi[e]} {e}", f"{v_yeni:,.0f} TL", f"%{degisim:.1f}")
-        else:
-            perf_cols[i % 4].metric(f"{enstruman_bilgi[e]} {e}", f"{v_yeni:,.0f} TL", "Yeni")
+    cols = st.columns(4)
+    for i, item in enumerate(kart_listesi):
+        cols[i % 4].metric(item['isim'], f"{item['deger']:,.0f} TL")
 
-    st.divider()
-    with st.expander("📄 Tüm Kayıtları Listele"):
-        st.dataframe(df.sort_values('tarih', ascending=False), use_container_width=True)
 else:
-    st.info("💡 Başlamak için sol menüden ilk verinizi kaydedin.")
+    st.info("💡 Veri girişi yapın.")
