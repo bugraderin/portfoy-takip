@@ -20,19 +20,18 @@ try:
     creds = Credentials.from_service_account_info(st.secrets["gcp_service_account"], scopes=scope)
     client = gspread.authorize(creds)
     spreadsheet = client.open("portfoyum")
-    
     ws_portfoy = spreadsheet.worksheet("Veri Sayfası")
     ws_gelir = spreadsheet.worksheet("Gelirler")
     ws_gider = spreadsheet.worksheet("Giderler")
     ws_ayrilan = spreadsheet.worksheet("Gidere Ayrılan Tutar")
 except Exception as e:
-    st.error(f"Bağlantı Hatası: {e}")
-    st.stop()
+    st.error(f"Bağlantı Hatası: {e}"); st.stop()
 
 # CSS Düzenlemeleri
 st.markdown("""<style>
     [data-testid="stMetricValue"] { font-size: 18px !important; }
     div[data-testid="stMetric"] { background-color: #f8f9fa; padding: 10px; border-radius: 8px; border: 1px solid #eee; }
+    .stRadio > div { flex-direction: row; justify-content: flex-start; } 
     </style>""", unsafe_allow_html=True)
 
 def get_son_bakiye_ve_limit():
@@ -44,10 +43,11 @@ def get_son_bakiye_ve_limit():
         return 0.0, 0.0
     except: return 0.0, 0.0
 
-tab_portfoy, tab_gelir, tab_gider, tab_ayrilan = st.tabs(["📊 Portföy", "💵 Gelirler", "💸 Giderler", "🛡️ Bütçe"])
+# --- NAVİGASYON (Sidebar Gizleme İçin Radyo Buton) ---
+secilen_sekme = st.radio("", ["📊 Portföy", "💵 Gelirler", "💸 Giderler", "🛡️ Bütçe"], horizontal=True)
 
 # --- SEKME 1: PORTFÖY ---
-with tab_portfoy:
+if secilen_sekme == "📊 Portföy":
     enstruman_bilgi = {'Hisse Senedi': '📈', 'Altın': '🟡', 'Gümüş': '⚪', 'Fon': '🏦', 'Döviz': '💵', 'Kripto': '₿', 'Mevduat': '💰', 'BES': '🛡️'}
     enstrumanlar = list(enstruman_bilgi.keys())
 
@@ -69,9 +69,20 @@ with tab_portfoy:
         
         guncel = df_p.iloc[-1]
         onceki = df_p.iloc[-2] if len(df_p) > 1 else guncel
-        
-        st.metric("Toplam Varlık", f"{int(guncel['Toplam']):,.0f}".replace(",", "."), f"{int(guncel['Toplam'] - onceki['Toplam']):,.0f}")
+        toplam_tl = guncel['Toplam']
 
+        # DİNAMİK ÜST METRİKLER (Altın, USD, EUR, BTC Karşılıkları)
+        m1, m2, m3, m4, m5 = st.columns(5)
+        m1.metric("Toplam Varlık (TL)", f"{int(toplam_tl):,.0f}".replace(",", "."), f"{int(toplam_tl - onceki['Toplam']):,.0f}")
+        # Örnek kurlar üzerinden hesaplama (API eklenene kadar baz değerler)
+        m2.metric("Altın Karşılığı", f"{(toplam_tl / 3150):.2f} gr") # Gram fiyatı ~3150 TL varsayıldı
+        m3.metric("USD Karşılığı", f"$ {(toplam_tl / 35.5):,.0f}")
+        m4.metric("EUR Karşılığı", f"€ {(toplam_tl / 38.2):,.0f}")
+        m5.metric("BTC Karşılığı", f"₿ {(toplam_tl / 3500000):.4f}")
+
+        st.divider()
+
+        # Enstrüman Bazlı Alt Metrikler
         varlik_data = []
         for e in enstrumanlar:
             if guncel[e] > 0:
@@ -87,14 +98,11 @@ with tab_portfoy:
 
         st.divider()
         sub_tab1, sub_tab2 = st.tabs(["🥧 Varlık Dağılımı", "📈 Gelişim Analizi"])
-        
         with sub_tab1:
             df_v['Etiket'] = df_v['Icon'] + " " + df_v['Cins']
             fig_p = px.pie(df_v, values='Tutar', names='Etiket', hole=0.4, color_discrete_sequence=px.colors.qualitative.Pastel)
-            # Hover düzenlemesi: Sadece isim ve tutar görünecek şekilde ayarlandı
             fig_p.update_traces(hovertemplate="%{label}<br>Tutar: %{value:,.0f}")
             st.plotly_chart(fig_p, use_container_width=True)
-            
         with sub_tab2:
             df_p['tarih_tr'] = df_p['tarih'].dt.day.astype(str) + " " + df_p['tarih'].dt.month.map(TR_AYLAR_TAM)
             fig_l = px.line(df_p, x='tarih', y='Toplam', markers=True, title="Toplam Varlık Seyri")
@@ -104,7 +112,7 @@ with tab_portfoy:
             st.plotly_chart(fig_l, use_container_width=True, config={'scrollZoom': True})
 
 # --- SEKME 2: GELİRLER ---
-with tab_gelir:
+elif secilen_sekme == "💵 Gelirler":
     st.subheader("💵 Gelir Yönetimi")
     with st.form("g_form", clear_on_submit=True):
         c1, c2, c3 = st.columns(3)
@@ -122,7 +130,6 @@ with tab_gelir:
         df_g['tarih'] = pd.to_datetime(df_g['tarih'], errors='coerce')
         for col in ["Maaş", "Prim&Promosyon", "Yatırımlar", "Toplam"]:
             if col in df_g.columns: df_g[col] = pd.to_numeric(df_g[col], errors='coerce').fillna(0)
-        
         df_g['tarih_tr'] = df_g['tarih'].dt.month.map(TR_AYLAR_TAM) + " " + df_g['tarih'].dt.year.astype(str)
         fig_gl = px.line(df_g, x='tarih', y='Toplam', markers=True, title="Aylık Gelir Gelişimi")
         fig_gl.update_traces(customdata=df_g['tarih_tr'], hovertemplate="Dönem: %{customdata}<br>Gelir: %{y:,.0f}")
@@ -130,11 +137,12 @@ with tab_gelir:
         fig_gl.update_layout(dragmode='pan', modebar_remove=['select2d', 'lasso2d', 'zoomIn2d', 'zoomOut2d', 'autoScale2d', 'resetScale2d', 'toImage'])
         st.plotly_chart(fig_gl, use_container_width=True, config={'scrollZoom': True})
 
-# --- SEKME 3: GİDERLER ---
-with tab_gider:
+# --- SEKME 3: GİDERLER (PASTA GERİ EKLENDİ) ---
+elif secilen_sekme == "💸 Giderler":
     kalan_bakiye, limit = get_son_bakiye_ve_limit()
     st.info(f"💰 Güncel Kalan Bütçe: **{int(kalan_bakiye):,.0f}**")
     gider_ikonlari = {"Genel Giderler": "📦", "Market": "🛒", "Kira": "🏠", "Aidat": "🏢", "Kredi Kartı": "💳", "Kredi": "🏦", "Eğitim": "🎓", "Araba": "🚗", "Seyahat": "✈️", "Sağlık": "🏥", "Çocuk": "👶", "Toplu Taşıma": "🚌"}
+    
     with st.form("gi_form", clear_on_submit=True):
         cols = st.columns(3)
         inputs = {isim: cols[i % 3].number_input(f"{ikon} {isim}", min_value=0, value=None) for i, (isim, ikon) in enumerate(gider_ikonlari.items())}
@@ -146,8 +154,26 @@ with tab_gider:
                 ws_ayrilan.append_row([datetime.now().strftime('%Y-%m-%d'), limit, yeni_kalan], value_input_option='RAW')
                 st.success(f"Kaydedildi. Kalan: {int(yeni_kalan)}"); st.rerun()
 
+    data_gi = ws_gider.get_all_records()
+    if data_gi:
+        df_gi = pd.DataFrame(data_gi)
+        kats = list(gider_ikonlari.keys())
+        for c in kats: 
+            if c in df_gi.columns: df_gi[c] = pd.to_numeric(df_gi[c], errors='coerce').fillna(0)
+        
+        # Pasta Grafiği Verisi Hazırlama
+        top_gi = df_gi[kats].sum().reset_index()
+        top_gi.columns = ['Kategori', 'Tutar']
+        top_gi['Etiket'] = top_gi['Kategori'].map(lambda x: f"{gider_ikonlari.get(x, '')} {x}")
+        
+        if top_gi['Tutar'].sum() > 0:
+            st.divider()
+            fig_g_pie = px.pie(top_gi[top_gi['Tutar']>0], values='Tutar', names='Etiket', hole=0.4, title="Toplam Gider Dağılımı", color_discrete_sequence=px.colors.qualitative.Set3)
+            fig_g_pie.update_traces(hovertemplate="%{label}<br>Tutar: %{value:,.0f}")
+            st.plotly_chart(fig_g_pie, use_container_width=True)
+
 # --- SEKME 4: BÜTÇE ---
-with tab_ayrilan:
+elif secilen_sekme == "🛡️ Bütçe":
     with st.form("b_form"):
         yeni_l = st.number_input("Yeni Aylık Limit", min_value=0)
         if st.form_submit_button("Başlat"):
