@@ -194,33 +194,54 @@ with tab_ayrilan:
             ws_ayrilan.append_row([datetime.now().strftime('%Y-%m-%d'), yeni_l, yeni_l], value_input_option='RAW')
             st.success("Bütçe güncellendi."); st.rerun()
 
-# --- SEKME 5: 🤖 AI ANALİZ (HATASIZ VERSİYON) ---
+# --- SEKME 5: 🤖 AI ANALİZ (KESİN ÇÖZÜM DENEMESİ) ---
 with tab_ai:
     st.subheader("🤖 Yapay Zeka Finansal Danışman")
+    
+    # Secrets kontrolü
     if "gemini_api_key" not in st.secrets:
-        st.info("Lütfen AI Analizi için Gemini API anahtarınızı ekleyin.")
+        st.error("Secrets dosyasında 'gemini_api_key' bulunamadı!")
     else:
         if st.button("📊 Verilerimi Analiz Et"):
-            with st.spinner("Yapay zeka verilerini inceliyor..."):
-                # Denenecek model listesi (En yeniden en eskiye)
-                model_names = ['gemini-1.5-flash', 'gemini-1.5-pro', 'gemini-pro']
-                response = None
-                
-                for m_name in model_names:
-                    try:
-                        temp_model = genai.GenerativeModel(m_name)
-                        # Verileri hazırla
-                        portfoy_ozet = df_v[['Cins', 'Tutar']].to_string(index=False)
-                        prompt = f"Finansal koç olarak bu verileri Türkçe yorumla: Varlıklar: {portfoy_ozet}, Toplam: {toplam_tl} TL, Bütçe: {kalan_bakiye} TL."
+            with st.spinner("Google sunucularına bağlanılıyor..."):
+                try:
+                    # 1. API Ayarlarını Sıfırla ve Yeniden Yapılandır
+                    genai.configure(api_key=st.secrets["gemini_api_key"])
+                    
+                    # 2. En kararlı modeli seç (Versiyon karmaşasını önlemek için)
+                    # Not: 'models/' ön eki bazen v1beta hatalarını çözer
+                    model_ai = genai.GenerativeModel('gemini-1.5-flash')
+                    
+                    # 3. Verileri Metne Dönüştür
+                    portfoy_ozet = df_v[['Cins', 'Tutar']].to_string(index=False)
+                    gider_ozet = top_gi[top_gi['Tutar'] > 0][['Kategori', 'Tutar']].to_string(index=False)
+                    
+                    analiz_prompt = f"""
+                    Bir finansal uzman gibi davran. Aşağıdaki verileri Türkçe analiz et:
+                    
+                    VARLIKLAR:
+                    {portfoy_ozet}
+                    Toplam: {toplam_tl} TL
+                    
+                    GİDERLER VE BÜTÇE:
+                    {gider_ozet}
+                    Kalan Bütçe: {kalan_bakiye} TL
+                    
+                    Lütfen:
+                    - Portföydeki riskli yoğunlaşmaları belirt.
+                    - Giderlere göre tasarruf önerisi yap.
+                    - 3 maddelik kısa bir aksiyon planı ver.
+                    """
+                    
+                    # 4. Yanıtı Al
+                    response = model_ai.generate_content(analiz_prompt)
+                    
+                    if response.text:
+                        st.success("✅ Analiz Başarılı!")
+                        st.markdown("---")
+                        st.markdown(response.text)
                         
-                        response = temp_model.generate_content(prompt)
-                        if response:
-                            st.success(f"Analiz Tamamlandı (Model: {m_name})")
-                            st.markdown("---")
-                            st.markdown(response.text)
-                            break # Başarılı olursa döngüden çık
-                    except Exception:
-                        continue # Hata alırsan bir sonraki modeli dene
-                
-                if not response:
-                    st.error("Maalesef şu an hiçbir AI modeline bağlanılamadı. Lütfen API anahtarınızı ve internet bağlantınızı kontrol edin.")
+                except Exception as e:
+                    # Hata mesajını detaylandırıyoruz
+                    st.error(f"⚠️ Bağlantı Hatası Detayı: {str(e)}")
+                    st.info("İpucu: Eğer 403 hatası alıyorsanız API anahtarınızın süresi dolmuş veya bölge kısıtlamasına takılmış olabilir.")
