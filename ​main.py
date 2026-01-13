@@ -194,46 +194,60 @@ with tab_ayrilan:
             ws_ayrilan.append_row([datetime.now().strftime('%Y-%m-%d'), yeni_l, yeni_l], value_input_option='RAW')
             st.success("Bütçe güncellendi."); st.rerun()
 
-# --- SEKME 5: 🤖 AI ANALİZ (KESİN ÇÖZÜM DENEMESİ) ---
+# --- SEKME 5: 🤖 AI ANALİZ (DEĞİŞKEN HATASI DÜZELTİLDİ) ---
 with tab_ai:
     st.subheader("🤖 Yapay Zeka Finansal Danışman")
     
-    # Secrets kontrolü
     if "gemini_api_key" not in st.secrets:
         st.error("Secrets dosyasında 'gemini_api_key' bulunamadı!")
     else:
         if st.button("📊 Verilerimi Analiz Et"):
-            with st.spinner("Google sunucularına bağlanılıyor..."):
+            with st.spinner("Finansal verileriniz analiz ediliyor..."):
                 try:
-                    # 1. API Ayarlarını Sıfırla ve Yeniden Yapılandır
+                    # AI Yapılandırması
                     genai.configure(api_key=st.secrets["gemini_api_key"])
-                    
-                    # 2. En kararlı modeli seç (Versiyon karmaşasını önlemek için)
-                    # Not: 'models/' ön eki bazen v1beta hatalarını çözer
                     model_ai = genai.GenerativeModel('gemini-1.5-flash')
                     
-                    # 3. Verileri Metne Dönüştür
-                    portfoy_ozet = df_v[['Cins', 'Tutar']].to_string(index=False)
-                    gider_ozet = top_gi[top_gi['Tutar'] > 0][['Kategori', 'Tutar']].to_string(index=False)
+                    # --- VERİLERİ HAZIRLA (Hata Almamak İçin Kontrollü Çekim) ---
+                    # 1. Portföy Verisi
+                    if 'df_v' in locals():
+                        portfoy_ozet = df_v[['Cins', 'Tutar']].to_string(index=False)
+                    else:
+                        portfoy_ozet = "Portföy verisi henüz girilmemiş."
+
+                    # 2. Gider Verisi (Hata veren kısım burasıydı, düzelttik)
+                    try:
+                        data_gi_temp = ws_gider.get_all_records()
+                        if data_gi_temp:
+                            df_gi_temp = pd.DataFrame(data_gi_temp)
+                            gider_sutunlari = [c for c in df_gi_temp.columns if c != 'tarih']
+                            for c in gider_sutunlari:
+                                df_gi_temp[c] = pd.to_numeric(df_gi_temp[c], errors='coerce').fillna(0)
+                            top_gi_ozet = df_gi_temp[gider_sutunlari].sum().to_string()
+                        else:
+                            top_gi_ozet = "Gider kaydı bulunamadı."
+                    except:
+                        top_gi_ozet = "Gider verilerine ulaşılamadı."
                     
+                    # 3. Prompt Oluştur
                     analiz_prompt = f"""
-                    Bir finansal uzman gibi davran. Aşağıdaki verileri Türkçe analiz et:
+                    Sen profesyonel bir finansal danışmansın. Kullanıcının şu verilerini analiz et:
                     
                     VARLIKLAR:
                     {portfoy_ozet}
-                    Toplam: {toplam_tl} TL
+                    Toplam Varlık: {toplam_tl} TL
                     
-                    GİDERLER VE BÜTÇE:
-                    {gider_ozet}
+                    GİDER ÖZETİ:
+                    {top_gi_ozet}
                     Kalan Bütçe: {kalan_bakiye} TL
                     
-                    Lütfen:
-                    - Portföydeki riskli yoğunlaşmaları belirt.
-                    - Giderlere göre tasarruf önerisi yap.
-                    - 3 maddelik kısa bir aksiyon planı ver.
+                    Lütfen şu 3 başlıkta Türkçe yorum yap:
+                    1. Portföy Dağılımı ve Riskler: (Hangi varlık çok fazla veya eksik?)
+                    2. Gider ve Bütçe Yorumu: (Tasarruf imkanı var mı?)
+                    3. Kısa Vadeli Tavsiyeler: (Kullanıcı ne yapmalı?)
                     """
                     
-                    # 4. Yanıtı Al
+                    # Yanıtı Al
                     response = model_ai.generate_content(analiz_prompt)
                     
                     if response.text:
@@ -242,6 +256,5 @@ with tab_ai:
                         st.markdown(response.text)
                         
                 except Exception as e:
-                    # Hata mesajını detaylandırıyoruz
-                    st.error(f"⚠️ Bağlantı Hatası Detayı: {str(e)}")
-                    st.info("İpucu: Eğer 403 hatası alıyorsanız API anahtarınızın süresi dolmuş veya bölge kısıtlamasına takılmış olabilir.")
+                    st.error(f"⚠️ Analiz sırasında bir sorun oluştu: {str(e)}")
+                    st.info("İpucu: Eğer 404/403 hatası devam ederse, Gemini API anahtarınızın aktif olduğundan emin olun.")
