@@ -20,29 +20,25 @@ except Exception as e:
     st.error(f"Bağlantı Hatası: {e}")
     st.stop()
  
-# --- 2. VERİ GİRİŞİ VE İKONLAR ---
-# İkonlu isimler sözlüğü
-enstruman_ikonlar = {
-    'Hisse Senedi': '📈 Hisse Senedi',
-    'Altın': '🟡 Altın',
-    'Gümüş': '⚪ Gümüş',
-    'Fon': '🏦 Fon',
-    'Döviz': '💵 Döviz',
-    'Kripto': '🪙 Kripto',
-    'Mevduat': '💰 Mevduat',
-    'BES': '🛡️ BES'
+# --- 2. VERİ GİRİŞİ VE İKON TANIMLARI ---
+# Sütun isimleri Sheets ile birebir aynı olmalı
+enstrumanlar = ['Hisse Senedi', 'Altın', 'Gümüş', 'Fon', 'Döviz', 'Kripto', 'Mevduat', 'BES']
+ 
+# İkonları burada eşleştiriyoruz
+ikonlar = {
+    'Hisse Senedi': '📈', 'Altın': '🟡', 'Gümüş': '⚪', 'Fon': '🏦',
+    'Döviz': '💵', 'Kripto': '🪙', 'Mevduat': '💰', 'BES': '🛡️'
 }
-enstrumanlar = list(enstruman_ikonlar.keys())
  
 with st.sidebar:
     st.header("📥 Veri Girişi")
-    st.info("Değerleri girip aşağıdaki butona basın.")
+    st.caption("Değerleri girip en alttaki butona basın.")
     
     with st.form("veri_formu", clear_on_submit=True):
         yeni_degerler = []
         for e in enstrumanlar:
-            # İkonlu ismi başlık olarak kullanıyoruz
-            val = st.number_input(f"{enstruman_ikonlar[e]} (TL)", min_value=0.0, step=100.0)
+            # İkonu başlığa ekliyoruz
+            val = st.number_input(f"{ikonlar[e]} {e} (TL)", min_value=0.0, step=100.0)
             yeni_degerler.append(val)
         
         submit = st.form_submit_button("🚀 Verileri Buluta Kaydet")
@@ -50,7 +46,7 @@ with st.sidebar:
 if submit:
     yeni_satir = [datetime.now().strftime('%Y-%m-%d')] + yeni_degerler
     worksheet.append_row(yeni_satir)
-    st.toast("Veriler başarıyla kaydedildi!", icon='✅')
+    st.toast("Veriler kaydedildi!", icon='✅')
     st.rerun()
  
 # --- 3. VERİ İŞLEME ---
@@ -78,32 +74,30 @@ if data:
         fark = guncel_toplam - df['Toplam'].iloc[-2]
         yuzde_fark = (fark / df['Toplam'].iloc[-2]) * 100
         c2.metric("Günlük Değişim", f"{fark:,.0f} TL", f"%{yuzde_fark:.2f}")
-    c3.metric("Veri Giriş Sayısı", len(df))
+    c3.metric("Kayıt Sayısı", len(df))
  
     st.divider()
  
-    # --- 4. GRAFİKLER (Geliştirilmiş UI) ---
+    # --- 4. GRAFİKLER ---
     t1, t2 = st.tabs(["📈 Gelişim Grafiği", "🥧 Varlık Dağılımı"])
     
     with t1:
         st.line_chart(df.set_index('tarih')['Toplam'])
         
     with t2:
-        # Pasta grafiğinin devasa görünmemesi için sütunlara bölüyoruz
-        grafik_sol, grafik_orta, grafik_sag = st.columns([1, 2, 1])
-        with grafik_orta:
+        # Pasta grafiği boyutu için orta sütunu kullanıyoruz
+        g_sol, g_orta, g_sag = st.columns([1, 1.5, 1])
+        with g_orta:
             son_durum = df[enstrumanlar].iloc[-1]
             pastane_verisi = son_durum[son_durum > 0]
             if not pastane_verisi.empty:
-                # İkonlu etiketler oluşturma
-                labels = [f"{enstruman_ikonlar[k]}" for k in pastane_verisi.index]
-                fig, ax = plt.subplots(figsize=(5, 3)) # Boyutu küçülttük
+                # İkonlu etiketleri burada oluşturuyoruz
+                labels = [f"{ikonlar[k]} {k}" for k in pastane_verisi.index]
+                fig, ax = plt.subplots(figsize=(6, 4))
                 ax.pie(pastane_verisi, labels=labels, autopct='%1.1f%%',
-                       startangle=140, textprops={'fontsize': 7})
+                       startangle=140, textprops={'fontsize': 9})
                 ax.axis('equal')
                 st.pyplot(fig)
-            else:
-                st.warning("Görüntülenecek veri bulunamadı.")
  
     st.divider()
  
@@ -118,17 +112,20 @@ if data:
     
     st.info(f"Seçilen dönem başındaki toplam: **{baslangic['Toplam']:,.0f} TL**")
     
-    # Enstrüman performansları
+    # İkonlu performans kartları
     perf_cols = st.columns(4)
     for i, e in enumerate(enstrumanlar):
         v_eski = baslangic[e]
         v_yeni = guncel_verisi[e]
         col_idx = i % 4
+        
+        display_label = f"{ikonlar[e]} {e}" # İkon burada ekleniyor
+        
         if v_eski > 0:
             degisim = ((v_yeni - v_eski) / v_eski) * 100
-            perf_cols[col_idx].metric(enstruman_ikonlar[e], f"{v_yeni:,.0f}", f"%{degisim:.1f}")
+            perf_cols[col_idx].metric(display_label, f"{v_yeni:,.0f} TL", f"%{degisim:.1f}")
         else:
-            perf_cols[col_idx].metric(enstruman_ikonlar[e], f"{v_yeni:,.0f}", "Yeni")
+            perf_cols[col_idx].metric(display_label, f"{v_yeni:,.0f} TL", "Yeni")
  
     st.divider()
     with st.expander("📄 Tüm Kayıtları Listele"):
