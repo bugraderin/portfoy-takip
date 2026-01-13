@@ -3,7 +3,7 @@ import gspread
 from google.oauth2.service_account import Credentials
 import pandas as pd
 from datetime import datetime, timedelta
-import plotly.express as px # Pasta grafiği için yeni kütüphane
+import plotly.express as px
 
 # --- SAYFA AYARLARI ---
 st.set_page_config(page_title="Portföy Takip", layout="wide")
@@ -29,13 +29,11 @@ enstrumanlar = list(enstruman_bilgi.keys())
 
 with st.sidebar:
     st.header("📥 Veri Girişi")
-    # "Press enter" uyarısını hafifletmek için açıklama ekledik
     st.caption("Değerleri yazıp en alttaki butona basın.")
     
     with st.form("veri_formu", clear_on_submit=True):
         yeni_degerler = []
         for e in enstrumanlar:
-            # İkonlar burada form içinde görünecek
             label = f"{enstruman_bilgi[e]} {e} (TL)"
             val = st.number_input(label, min_value=0.0, step=100.0)
             yeni_degerler.append(val)
@@ -44,7 +42,7 @@ with st.sidebar:
 if submit:
     yeni_satir = [datetime.now().strftime('%Y-%m-%d')] + yeni_degerler
     worksheet.append_row(yeni_satir)
-    st.toast("Veriler kaydedildi!", icon='✅')
+    st.toast("Veriler başarıyla kaydedildi!", icon='✅')
     st.rerun()
 
 # --- 3. VERİ İŞLEME ---
@@ -74,15 +72,15 @@ if data:
 
     st.divider()
 
-    # --- 4. GRAFİKLER (UX İyileştirmeli) ---
+    # --- 4. GRAFİKLER ---
     t1, t2 = st.tabs(["📈 Gelişim Grafiği", "🥧 Varlık Dağılımı"])
     
     with t1:
-        # İnce çizgi ve interaktif
+        st.subheader("Toplam Portföy Gelişimi")
         st.line_chart(df.set_index('tarih')['Toplam'])
         
     with t2:
-        st.subheader("Güncel Portföy Dağılımı")
+        st.subheader("Güncel Varlık Dağılımı")
         son_durum = df[enstrumanlar].iloc[-1]
         pasta_df = pd.DataFrame({
             'Enstrüman': [f"{enstruman_bilgi[e]} {e}" for e in son_durum.index if son_durum[e] > 0],
@@ -90,28 +88,28 @@ if data:
         })
         
         if not pasta_df.empty:
-            # Matplotlib yerine Plotly: Emojileri destekler ve ekrana tam sığar
+            # Plotly ile emojili ve interaktif grafik
             fig = px.pie(pasta_df, values='Değer', names='Enstrüman', 
-                         hole=0.4, # Simit grafik daha modern durur
-                         color_discrete_sequence=px.colors.qualitative.Pastel)
+                         hole=0.4, color_discrete_sequence=px.colors.qualitative.Pastel)
             fig.update_traces(textinfo='percent+label')
-            fig.update_layout(margin=dict(t=0, b=0, l=0, r=0), height=450) # Boyut kontrolü
+            fig.update_layout(margin=dict(t=30, b=0, l=0, r=0), height=450)
             st.plotly_chart(fig, use_container_width=True)
-        else:
-            st.warning("Görüntülenecek veri yok.")
 
     st.divider()
 
     # --- 5. PERFORMANS ANALİZİ ---
-    st.subheader("⏱️ Dönemsel Analiz")
+    st.subheader("⏱️ Dönemsel Performans Analizi")
     periyotlar = {"1 Gün": 1, "1 Ay": 30, "3 Ay": 90, "6 Ay": 180, "1 Yıl": 365}
     secim = st.selectbox("Kıyaslama süresi seçin:", list(periyotlar.keys()))
     
     hedef_tarih = datetime.now() - timedelta(days=periyotlar[secim])
     gecmis_df = df[df['tarih'] <= hedef_tarih]
+    
+    # Esnek veri bulma mantığı
     baslangic = gecmis_df.iloc[-1] if not gecmis_df.empty else df.iloc[0]
     
-    # Performans kartlarında ikonlar
+    st.info(f"Dönem başı ({baslangic['tarih'].date()}): **{baslangic['Toplam']:,.0f} TL**")
+    
     perf_cols = st.columns(4)
     for i, e in enumerate(enstrumanlar):
         v_eski = baslangic[e]
@@ -123,7 +121,7 @@ if data:
             perf_cols[i % 4].metric(f"{enstruman_bilgi[e]} {e}", f"{v_yeni:,.0f} TL", "Yeni")
 
     st.divider()
-    with st.expander("📄 Geçmiş Kayıtlar"):
+    with st.expander("📄 Tüm Kayıtları Listele"):
         st.dataframe(df.sort_values('tarih', ascending=False), use_container_width=True)
 else:
-    st.info("💡 İlk verinizi girerek başlayın.")
+    st.info("💡 Başlamak için sol menüden ilk verinizi kaydedin.")
