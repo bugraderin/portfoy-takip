@@ -1,5 +1,5 @@
 streamlit
 gspread
-google-auth
+google-oauth2
 pandas
-matplotlib
+plotly
