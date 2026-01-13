@@ -207,6 +207,23 @@ with tab_ai:
                     # AI Yapılandırması
                     genai.configure(api_key=st.secrets["gemini_api_key"])
                     model_ai = genai.GenerativeModel('gemini-1.5-flash')
+                  # AI Yapılandırması
+                    genai.configure(api_key=st.secrets["gemini_api_key"])
+                    
+                    # 404 hatasını aşmak için en kararlı modeli ve sürümü zorla
+                    try:
+                        # Önce 1.5 Flash'ın en güncel halini dene
+                        model_ai = genai.GenerativeModel('gemini-1.5-flash-latest')
+                        response = model_ai.generate_content(analiz_prompt)
+                    except:
+                        try:
+                            # Hata verirse düz 1.5 flash dene
+                            model_ai = genai.GenerativeModel('gemini-1.5-flash')
+                            response = model_ai.generate_content(analiz_prompt)
+                        except:
+                            # O da olmazsa en temel gemini-pro modelini dene (Her yerde çalışır)
+                            model_ai = genai.GenerativeModel('gemini-pro')
+                            response = model_ai.generate_content(analiz_prompt)
                     
                     # --- VERİLERİ HAZIRLA (Hata Almamak İçin Kontrollü Çekim) ---
                     # 1. Portföy Verisi
