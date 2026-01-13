@@ -49,7 +49,7 @@ def get_son_bakiye_ve_limit():
 # --- ANA SEKMELER ---
 tab_portfoy, tab_gelir, tab_gider, tab_ayrilan = st.tabs(["📊 Portföy", "💵 Gelirler", "💸 Giderler", "🛡️ Bütçe"])
 
-# --- SEKME 1: PORTFÖY (SOL PANEL GERİ GELDİ) ---
+# --- SEKME 1: PORTFÖY ---
 with tab_portfoy:
     enstruman_bilgi = {
         'Hisse Senedi': '📈', 'Altın': '🟡', 'Gümüş': '⚪', 'Fon': '🏦', 
@@ -57,7 +57,6 @@ with tab_portfoy:
     }
     enstrumanlar = list(enstruman_bilgi.keys())
 
-    # SOLDAKİ ENSTRÜMAN GİRME ALANI (SİDEBAR)
     with st.sidebar:
         st.header("📥 Portföy Güncelle")
         with st.form("p_form", clear_on_submit=True):
@@ -103,7 +102,8 @@ with tab_portfoy:
             df_p['tarih_tr'] = df_p['tarih'].dt.day.astype(str) + " " + df_p['tarih'].dt.month.map(TR_AYLAR)
             fig_l = px.line(df_p, x='tarih', y='Toplam', markers=True, title="Toplam Varlık Seyri", custom_data=['tarih_tr'])
             fig_l.update_traces(hovertemplate="Tarih: %{customdata[0]}<br>Toplam: %{y:,.0f}")
-            fig_l.update_xaxes(title="Dönem")
+            # Yakınlaştırma ve kaydırma hariç diğerlerini kaldır
+            fig_l.update_layout(modebar_remove=['zoomIn2d', 'zoomOut2d', 'autoScale2d', 'resetScale2d', 'select2d', 'lasso2d', 'toImage'])
             st.plotly_chart(fig_l, use_container_width=True)
 
 # --- SEKME 2: GELİRLER ---
@@ -135,19 +135,43 @@ with tab_gelir:
             df_g['tarih_tr'] = df_g['tarih'].dt.month.map(TR_AYLAR) + " " + df_g['tarih'].dt.year.astype(str)
             fig_gl = px.line(df_g, x='tarih', y='Toplam', markers=True, title="Aylık Gelir Gelişimi", custom_data=['tarih_tr'])
             fig_gl.update_traces(hovertemplate="Dönem: %{customdata[0]}<br>Gelir: %{y:,.0f}")
+            # Yakınlaştırma ve kaydırma hariç diğerlerini kaldır
+            fig_gl.update_layout(modebar_remove=['zoomIn2d', 'zoomOut2d', 'autoScale2d', 'resetScale2d', 'select2d', 'lasso2d', 'toImage'])
             st.plotly_chart(fig_gl, use_container_width=True)
 
-# --- SEKME 3: GİDERLER (TAMAMEN DÜZELTİLDİ) ---
+# --- SEKME 3: GİDERLER ---
 with tab_gider:
     st.subheader("💸 Gider Yönetimi")
     kalan_bakiye, limit = get_son_bakiye_ve_limit()
     st.info(f"💰 Güncel Kalan Bütçe: **{int(kalan_bakiye):,.0f}**")
     
+    # Gider kalemleri ve İkonları
+    gider_ikonlari = {
+        "Genel Giderler": "📦", "Market": "🛒", "Kira": "🏠", "Aidat": "🏢", 
+        "Kredi Kartı": "💳", "Kredi": "🏦", "Eğitim": "🎓", "Araba": "🚗", 
+        "Seyahat": "✈️", "Sağlık": "🏥", "Çocuk": "👶", "Toplu Taşıma": "🚌"
+    }
+    
     with st.form("gi_form", clear_on_submit=True):
-        c1, c2, c3 = st.columns(3); genel = c1.number_input("Genel Giderler", min_value=0, value=None); market = c2.number_input("Market", min_value=0, value=None); kira = c3.number_input("Kira", min_value=0, value=None)
-        c4, c5, c6 = st.columns(3); aidat = c4.number_input("Aidat", min_value=0, value=None); kk = c5.number_input("Kredi Kartı", min_value=0, value=None); kredi = c6.number_input("Kredi", min_value=0, value=None)
-        c7, c8, c9 = st.columns(3); egitim = c7.number_input("Eğitim", min_value=0, value=None); araba = c8.number_input("Araba", min_value=0, value=None); seyahat = c9.number_input("Seyahat", min_value=0, value=None)
-        c10, c11, c12 = st.columns(3); saglik = c10.number_input("Sağlık", min_value=0, value=None); cocuk = c11.number_input("Çocuk", min_value=0, value=None); ulashim = c12.number_input("Toplu Taşıma", min_value=0, value=None)
+        c1, c2, c3 = st.columns(3)
+        genel = c1.number_input(f"{gider_ikonlari['Genel Giderler']} Genel Giderler", min_value=0, value=None)
+        market = c2.number_input(f"{gider_ikonlari['Market']} Market", min_value=0, value=None)
+        kira = c3.number_input(f"{gider_ikonlari['Kira']} Kira", min_value=0, value=None)
+        
+        c4, c5, c6 = st.columns(3)
+        aidat = c4.number_input(f"{gider_ikonlari['Aidat']} Aidat", min_value=0, value=None)
+        kk = c5.number_input(f"{gider_ikonlari['Kredi Kartı']} Kredi Kartı", min_value=0, value=None)
+        kredi = c6.number_input(f"{gider_ikonlari['Kredi']} Kredi", min_value=0, value=None)
+        
+        c7, c8, c9 = st.columns(3)
+        egitim = c7.number_input(f"{gider_ikonlari['Eğitim']} Eğitim", min_value=0, value=None)
+        araba = c8.number_input(f"{gider_ikonlari['Araba']} Araba", min_value=0, value=None)
+        seyahat = c9.number_input(f"{gider_ikonlari['Seyahat']} Seyahat", min_value=0, value=None)
+        
+        c10, c11, c12 = st.columns(3)
+        saglik = c10.number_input(f"{gider_ikonlari['Sağlık']} Sağlık", min_value=0, value=None)
+        cocuk = c11.number_input(f"{gider_ikonlari['Çocuk']} Çocuk", min_value=0, value=None)
+        ulashim = c12.number_input(f"{gider_ikonlari['Toplu Taşıma']} Toplu Taşıma", min_value=0, value=None)
         
         if st.form_submit_button("✅ Harcamayı Kaydet"):
             kalemler = [genel, market, kira, aidat, kk, kredi, egitim, araba, seyahat, saglik, cocuk, ulashim]
@@ -161,12 +185,15 @@ with tab_gider:
     data_gi = ws_gider.get_all_records()
     if data_gi:
         df_gi = pd.DataFrame(data_gi)
-        kats = ["Genel Giderler", "Market", "Kira", "Aidat", "Kredi Kartı", "Kredi", "Eğitim", "Araba", "Seyahat", "Sağlık", "Çocuk", "Toplu Taşıma"]
+        kats = list(gider_ikonlari.keys())
         for c in kats: 
             if c in df_gi.columns: df_gi[c] = pd.to_numeric(df_gi[c], errors='coerce').fillna(0)
+        
         top_gi = df_gi[kats].sum().reset_index()
         top_gi.columns = ['Kategori', 'Tutar']
-        st.plotly_chart(px.pie(top_gi[top_gi['Tutar']>0], values='Tutar', names='Kategori', hole=0.4, title="Toplam Gider Dağılımı"), use_container_width=True)
+        # Pastada da ikonları göster
+        top_gi['Etiket'] = top_gi['Kategori'].map(gider_ikonlari) + " " + top_gi['Kategori']
+        st.plotly_chart(px.pie(top_gi[top_gi['Tutar']>0], values='Tutar', names='Etiket', hole=0.4, title="Toplam Gider Dağılımı"), use_container_width=True)
 
 # --- SEKME 4: BÜTÇE ---
 with tab_ayrilan:
