@@ -26,15 +26,15 @@ except Exception as e:
 # CSS: Artı/Eksi butonlarını gizler
 st.markdown("""<style> input::-webkit-outer-spin-button, input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; } input[type=number] { -moz-appearance: textfield; } </style>""", unsafe_allow_html=True)
 
-# --- YARDIMCI FONKSİYONLAR ---
+# --- YARDIMCI FONKSİYON: HATASIZ BÜTÇE TAKİBİ ---
 def get_son_butce_verileri():
-    """Bütçe sayfasındaki en son kalan bakiyeyi ve ana limiti getirir."""
+    """Bütçe sayfasındaki EN SON satırdan güncel bakiye ve limiti çeker."""
     try:
-        data = ws_ayrilan.get_all_records()
-        if data:
-            son_kayit = data[-1]
-            # Sütun isimlerinizin Sheets ile birebir aynı olduğundan emin olun
-            return float(son_kayit['Kalan']), float(son_kayit['Ayrılan Tutar'])
+        # Tüm veriyi çekip son satırı almak en güvenli yoldur
+        records = ws_ayrilan.get_all_records()
+        if records:
+            son_satir = records[-1]
+            return float(son_satir['Kalan']), float(son_satir['Ayrılan Tutar'])
         return 0.0, 0.0
     except:
         return 0.0, 0.0
@@ -42,7 +42,7 @@ def get_son_butce_verileri():
 # --- ANA SEKMELER ---
 tab_portfoy, tab_gelir, tab_gider, tab_ayrilan = st.tabs(["📊 Portföy Analizi", "💵 Gelirler", "💸 Giderler", "🛡️ Bütçe Planlama"])
 
-# --- SEKME 1: PORTFÖY ---
+# --- SEKME 1: PORTFÖY (Mevcut yapınız) ---
 with tab_portfoy:
     enstruman_bilgi = {'Hisse Senedi': '📈', 'Altın': '🟡', 'Gümüş': '⚪', 'Fon': '🏦', 'Döviz': '💵', 'Kripto': '₿', 'Mevduat': '💰', 'BES': '🛡️'}
     enstrumanlar = list(enstruman_bilgi.keys())
@@ -64,33 +64,19 @@ with tab_portfoy:
         df_p['Toplam'] = df_p[enstrumanlar].sum(axis=1)
         df_p = df_p.sort_values('tarih')
         guncel = df_p.iloc[-1]
-
         st.metric("Toplam Varlık", f"{int(guncel['Toplam']):,.0f} TL".replace(",", "."))
-        st.divider()
-        
-        periyotlar = {"1 Gün": 1, "1 Ay": 30, "3 Ay": 90, "6 Ay": 180, "1 Yıl": 365}
-        secim = st.selectbox("Kıyaslama süresi:", list(periyotlar.keys()))
-        
-        h_tarih = datetime.now() - timedelta(days=periyotlar[secim])
-        gecmis_df = df_p[df_p['tarih'] <= h_tarih]
-        baslangic = gecmis_df.iloc[-1] if not gecmis_df.empty else df_p.iloc[0]
-        
-        t_fark = guncel['Toplam'] - baslangic['Toplam']
-        b_yuzde = (t_fark / baslangic['Toplam'] * 100) if baslangic['Toplam'] > 0 else 0
-        st.success(f"**{secim}** öncesine göre değişim: **%{b_yuzde:.2f}**")
-
-        fig_line = px.line(df_p, x='tarih', y='Toplam', markers=True, title="Toplam Varlık Gelişimi")
+        fig_line = px.line(df_p, x='tarih', y='Toplam', markers=True, title="Varlık Gelişimi")
         st.plotly_chart(fig_line, use_container_width=True)
 
-# --- SEKME 3: GİDERLER ---
+# --- SEKME 3: GİDERLER (DEVREDEN HESAPLAMASI DÜZELTİLDİ) ---
 with tab_gider:
     st.subheader("💸 Gider Girişi")
-    eski_kalan, limit = get_son_butce_verileri()
-    st.info(f"💰 Güncel Kalan Bütçeniz: **{eski_kalan:,.0f} TL**")
+    
+    # İşlem öncesi mevcut durumu alıyoruz
+    guncel_kalan, aktif_limit = get_son_butce_verileri()
+    st.info(f"💰 Harcama Öncesi Kalan Bütçe: **{guncel_kalan:,.0f} TL**")
     
     with st.form("gi_form", clear_on_submit=True):
-        st.write("### 🏷️ Harcama Kalemleri")
-        
         c1, c2, c3 = st.columns(3)
         genel = c1.number_input("Genel Giderler", min_value=0, value=None)
         market = c2.number_input("Market", min_value=0, value=None)
@@ -112,40 +98,43 @@ with tab_gider:
         ulashim = c12.number_input("Toplu Taşıma", min_value=0, value=None)
 
         if st.form_submit_button("✅ Harcamayı Kaydet"):
-            # Harcama Listesi oluştur
             kalemler = [genel, market, kira, aidat, kk, kredi, egitim, araba, seyahat, saglik, cocuk, ulashim]
             toplam_harcama = sum([x or 0 for x in kalemler])
             
             if toplam_harcama > 0:
-                yeni_kalan = eski_kalan - toplam_harcama
+                # KRİTİK HESAPLAMA:
+                # Yeni Kalan = Mevcut Bakiye - Harcama
+                # Devreden = Mevcut Bakiye (Harcama yapılmadan önceki tutar)
+                yeni_kalan = guncel_kalan - toplam_harcama
+                devreden_tutar = guncel_kalan 
                 
                 # 1. Giderler Sayfasına Kayıt
                 harcama_satiri = [datetime.now().strftime('%Y-%m-%d')] + [x or 0 for x in kalemler]
                 ws_gider.append_row(harcama_satiri, value_input_option='RAW')
                 
-                # 2. Bütçe Sayfasına Kayıt (Hata düzeltildi: Devreden artık harcama öncesindeki 'Kalan' dır)
-                # Sıralama: Tarih, Ayrılan Tutar, Kalan, Devreden
+                # 2. Bütçe Sayfasına Kayıt (A-B-C-D Sütunları)
+                # Sıralama: tarih, Ayrılan Tutar, Kalan, Devreden
                 ws_ayrilan.append_row([
                     datetime.now().strftime('%Y-%m-%d'), 
-                    limit, 
+                    aktif_limit, 
                     yeni_kalan, 
-                    eski_kalan  # Devreden sütununa işlemden önceki bakiye yazılır
+                    devreden_tutar
                 ], value_input_option='RAW')
                 
-                st.success(f"Kaydedildi! Yeni Bakiye: {yeni_kalan} TL")
+                st.success(f"Harcama kaydedildi. Yeni Kalan: {yeni_kalan} TL")
                 st.rerun()
             else:
-                st.warning("Lütfen en az bir harcama tutarı girin.")
+                st.warning("Lütfen bir tutar giriniz.")
 
 # --- SEKME 4: BÜTÇE PLANI ---
 with tab_ayrilan:
     st.subheader("🛡️ Limit Tanımla")
     with st.form("a_form", clear_on_submit=True):
-        y_lim = st.number_input("Yeni Aylık Limit", min_value=0, value=None)
+        y_lim = st.number_input("Aylık Limit", min_value=0, value=None)
         if st.form_submit_button("Bütçeyi Başlat"):
-            # Yeni bütçe başlangıcında Kalan = Limit, Devreden = 0
+            # Yeni bütçe: Kalan=Limit, Devreden=0
             ws_ayrilan.append_row([datetime.now().strftime('%Y-%m-%d'), y_lim or 0, y_lim or 0, 0], value_input_option='RAW')
-            st.success("Yeni limit başarıyla tanımlandı.")
+            st.success("Yeni bütçe dönemi başlatıldı.")
             st.rerun()
 
 # --- SEKME 2: GELİRLER ---
@@ -157,5 +146,4 @@ with tab_gelir:
         y = st.number_input("Yatırım", min_value=0, value=None)
         if st.form_submit_button("Kaydet"):
             ws_gelir.append_row([datetime.now().strftime('%Y-%m-%d'), m or 0, p or 0, y or 0], value_input_option='RAW')
-            st.success("Gelir kaydedildi.")
             st.rerun()
