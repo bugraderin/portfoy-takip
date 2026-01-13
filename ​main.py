@@ -40,7 +40,7 @@ def get_son_bakiye_ve_limit():
 # --- ANA SEKMELER ---
 tab_portfoy, tab_gelir, tab_gider, tab_ayrilan = st.tabs(["📊 Portföy Analizi", "💵 Gelirler", "💸 Giderler", "🛡️ Bütçe Planlama"])
 
-# --- SEKME 1: PORTFÖY ANALİZİ (İÇ İÇE SEKMELİ YAPI) ---
+# --- SEKME 1: PORTFÖY ANALİZİ ---
 with tab_portfoy:
     enstruman_bilgi = {'Hisse Senedi': '📈', 'Altın': '🟡', 'Gümüş': '⚪', 'Fon': '🏦', 'Döviz': '💵', 'Kripto': '₿', 'Mevduat': '💰', 'BES': '🛡️'}
     enstrumanlar = list(enstruman_bilgi.keys())
@@ -61,18 +61,47 @@ with tab_portfoy:
         for col in enstrumanlar: df_p[col] = pd.to_numeric(df_p[col], errors='coerce').fillna(0)
         df_p['Toplam'] = df_p[enstrumanlar].sum(axis=1)
         df_p = df_p.sort_values('tarih')
-        guncel = df_p.iloc[-1]
-
-        # Üst Metrik
-        st.metric("Toplam Varlık", f"{int(guncel['Toplam']):,.0f} TL".replace(",", "."))
         
+        guncel = df_p.iloc[-1]
+        onceki = df_p.iloc[-2] if len(df_p) > 1 else guncel
+
+        # 1. TOPLAM VARLIK VE GÜNLÜK DEĞİŞİM METRİĞİ
+        t_fark = guncel['Toplam'] - onceki['Toplam']
+        t_yuzde = (t_fark / onceki['Toplam'] * 100) if onceki['Toplam'] > 0 else 0
+        
+        st.metric("Toplam Varlık", f"{int(guncel['Toplam']):,.0f} TL".replace(",", "."), f"{t_fark:,.0f} TL (%{t_yuzde:.2f})")
+
+        # 2. SIRALI VARLIK LİSTESİ VE GÜNLÜK DEĞİŞİMLER
+        st.write("### 📋 Güncel Varlık Durumu (Sıralı)")
+        
+        # Veriyi hazırla
+        varlik_listesi = []
+        for e in enstrumanlar:
+            g_tutar = guncel[e]
+            o_tutar = onceki[e]
+            degisim = g_tutar - o_tutar
+            yuzde = (degisim / o_tutar * 100) if o_tutar > 0 else 0
+            varlik_listesi.append({'Simge': enstruman_bilgi[e], 'Enstrüman': e, 'Tutar': g_tutar, 'Değişim': degisim, 'Yüzde': yuzde})
+        
+        # Büyükten küçüğe sırala
+        df_sirali = pd.DataFrame(varlik_listesi).sort_values(by='Tutar', ascending=False)
+
+        # Görsel kolonlar oluştur (4'lü grid)
+        cols = st.columns(4)
+        for i, (index, row) in enumerate(df_sirali.iterrows()):
+            with cols[i % 4]:
+                st.metric(
+                    label=f"{row['Simge']} {row['Enstrüman']}",
+                    value=f"{int(row['Tutar']):,.0f} TL".replace(",", "."),
+                    delta=f"{row['Değişim']:,.0f} TL (%{row['Yüzde']:.2f})"
+                )
+
         # --- ALT SEKMELER ---
+        st.divider()
         sub_tab_pasta, sub_tab_gelisim = st.tabs(["🥧 Varlık Dağılımı", "⏱️ Performans ve Gelişim"])
 
         with sub_tab_pasta:
-            v_data = pd.DataFrame({'Enstrüman': enstrumanlar, 'Tutar': [guncel[e] for e in enstrumanlar]})
-            v_data = v_data[v_data['Tutar'] > 0].sort_values(by='Tutar', ascending=False)
-            
+            v_data = df_sirali[df_sirali['Tutar'] > 0]
             fig_p_pie = px.pie(v_data, values='Tutar', names='Enstrüman', hole=0.4, color_discrete_sequence=px.colors.qualitative.Set3)
             st.plotly_chart(fig_p_pie, use_container_width=True)
 
@@ -84,9 +113,9 @@ with tab_portfoy:
             gecmis_df = df_p[df_p['tarih'] <= h_tarih]
             baslangic = gecmis_df.iloc[-1] if not gecmis_df.empty else df_p.iloc[0]
             
-            t_fark = guncel['Toplam'] - baslangic['Toplam']
-            b_yuzde = (t_fark / baslangic['Toplam'] * 100) if baslangic['Toplam'] > 0 else 0
-            st.success(f"**{secim}** öncesine göre değişim: **%{b_yuzde:.2f}**")
+            p_fark = guncel['Toplam'] - baslangic['Toplam']
+            p_yuzde = (p_fark / baslangic['Toplam'] * 100) if baslangic['Toplam'] > 0 else 0
+            st.success(f"**{secim}** öncesine göre toplam değişim: **%{p_yuzde:.2f}**")
 
             fig_line = px.line(df_p, x='tarih', y='Toplam', markers=True, title="Toplam Varlık Gelişimi")
             st.plotly_chart(fig_line, use_container_width=True)
@@ -141,7 +170,7 @@ with tab_gider:
             fig_g_pie = px.pie(pasta_data, values='Tutar', names='Kategori', hole=0.4, color_discrete_sequence=px.colors.qualitative.Pastel)
             st.plotly_chart(fig_g_pie, use_container_width=True)
 
-# --- SEKME 4: BÜTÇE PLANI ---
+# --- SEKME 4: BÜTÇE PLANI (AYNI) ---
 with tab_ayrilan:
     st.subheader("🛡️ Limit Tanımla")
     with st.form("a_form", clear_on_submit=True):
@@ -151,7 +180,7 @@ with tab_ayrilan:
             st.success("Yeni bütçe başlatıldı.")
             st.rerun()
 
-# --- SEKME 2: GELİRLER ---
+# --- SEKME 2: GELİRLER (AYNI) ---
 with tab_gelir:
     st.subheader("💵 Gelir Girişi")
     with st.form("g_form", clear_on_submit=True):
