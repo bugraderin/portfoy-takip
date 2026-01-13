@@ -20,19 +20,18 @@ try:
     creds = Credentials.from_service_account_info(st.secrets["gcp_service_account"], scopes=scope)
     client = gspread.authorize(creds)
     spreadsheet = client.open("portfoyum")
-    
     ws_portfoy = spreadsheet.worksheet("Veri Sayfası")
     ws_gelir = spreadsheet.worksheet("Gelirler")
     ws_gider = spreadsheet.worksheet("Giderler")
     ws_ayrilan = spreadsheet.worksheet("Gidere Ayrılan Tutar")
 except Exception as e:
-    st.error(f"Bağlantı Hatası: {e}")
-    st.stop()
+    st.error(f"Bağlantı Hatası: {e}"); st.stop()
 
 # CSS Düzenlemeleri
 st.markdown("""<style>
     [data-testid="stMetricValue"] { font-size: 18px !important; }
     div[data-testid="stMetric"] { background-color: #f8f9fa; padding: 10px; border-radius: 8px; border: 1px solid #eee; }
+    .stRadio > div { flex-direction: row; justify-content: flex-start; } 
     </style>""", unsafe_allow_html=True)
 
 def get_son_bakiye_ve_limit():
@@ -44,16 +43,15 @@ def get_son_bakiye_ve_limit():
         return 0.0, 0.0
     except: return 0.0, 0.0
 
-# ANA SEKMELER
-tabs = ["📊 Portföy", "💵 Gelirler", "💸 Giderler", "🛡️ Bütçe"]
-tab_portfoy_label, tab_gelir_label, tab_gider_label, tab_ayrilan_label = st.tabs(tabs)
+# --- NAVİGASYON (Sekme yerine dinamik yapı) ---
+secilen_sekme = st.radio("", ["📊 Portföy", "💵 Gelirler", "💸 Giderler", "🛡️ Bütçe"], horizontal=True)
 
 # --- SEKME 1: PORTFÖY ---
-with tab_portfoy_label:
+if secilen_sekme == "📊 Portföy":
     enstruman_bilgi = {'Hisse Senedi': '📈', 'Altın': '🟡', 'Gümüş': '⚪', 'Fon': '🏦', 'Döviz': '💵', 'Kripto': '₿', 'Mevduat': '💰', 'BES': '🛡️'}
     enstrumanlar = list(enstruman_bilgi.keys())
 
-    # Portföy Güncelle Menüsü Sadece Bu Blokta (Sidebar)
+    # Kenar Çubuğu Sadece Burada Gözükür
     with st.sidebar:
         st.header("📥 Portföy Güncelle")
         with st.form("p_form", clear_on_submit=True):
@@ -72,7 +70,6 @@ with tab_portfoy_label:
         
         guncel = df_p.iloc[-1]
         onceki = df_p.iloc[-2] if len(df_p) > 1 else guncel
-        
         st.metric("Toplam Varlık", f"{int(guncel['Toplam']):,.0f}".replace(",", "."), f"{int(guncel['Toplam'] - onceki['Toplam']):,.0f}")
 
         varlik_data = []
@@ -90,13 +87,11 @@ with tab_portfoy_label:
 
         st.divider()
         sub_tab1, sub_tab2 = st.tabs(["🥧 Varlık Dağılımı", "📈 Gelişim Analizi"])
-        
         with sub_tab1:
             df_v['Etiket'] = df_v['Icon'] + " " + df_v['Cins']
             fig_p = px.pie(df_v, values='Tutar', names='Etiket', hole=0.4, color_discrete_sequence=px.colors.qualitative.Pastel)
             fig_p.update_traces(hovertemplate="%{label}<br>Tutar: %{value:,.0f}")
             st.plotly_chart(fig_p, use_container_width=True)
-            
         with sub_tab2:
             df_p['tarih_tr'] = df_p['tarih'].dt.day.astype(str) + " " + df_p['tarih'].dt.month.map(TR_AYLAR_TAM)
             fig_l = px.line(df_p, x='tarih', y='Toplam', markers=True, title="Toplam Varlık Seyri")
@@ -106,7 +101,7 @@ with tab_portfoy_label:
             st.plotly_chart(fig_l, use_container_width=True, config={'scrollZoom': True})
 
 # --- SEKME 2: GELİRLER ---
-with tab_gelir_label:
+elif secilen_sekme == "💵 Gelirler":
     st.subheader("💵 Gelir Yönetimi")
     with st.form("g_form", clear_on_submit=True):
         c1, c2, c3 = st.columns(3)
@@ -124,7 +119,6 @@ with tab_gelir_label:
         df_g['tarih'] = pd.to_datetime(df_g['tarih'], errors='coerce')
         for col in ["Maaş", "Prim&Promosyon", "Yatırımlar", "Toplam"]:
             if col in df_g.columns: df_g[col] = pd.to_numeric(df_g[col], errors='coerce').fillna(0)
-        
         df_g['tarih_tr'] = df_g['tarih'].dt.month.map(TR_AYLAR_TAM) + " " + df_g['tarih'].dt.year.astype(str)
         fig_gl = px.line(df_g, x='tarih', y='Toplam', markers=True, title="Aylık Gelir Gelişimi")
         fig_gl.update_traces(customdata=df_g['tarih_tr'], hovertemplate="Dönem: %{customdata}<br>Gelir: %{y:,.0f}")
@@ -133,7 +127,7 @@ with tab_gelir_label:
         st.plotly_chart(fig_gl, use_container_width=True, config={'scrollZoom': True})
 
 # --- SEKME 3: GİDERLER ---
-with tab_gider_label:
+elif secilen_sekme == "💸 Giderler":
     kalan_bakiye, limit = get_son_bakiye_ve_limit()
     st.info(f"💰 Güncel Kalan Bütçe: **{int(kalan_bakiye):,.0f}**")
     gider_ikonlari = {"Genel Giderler": "📦", "Market": "🛒", "Kira": "🏠", "Aidat": "🏢", "Kredi Kartı": "💳", "Kredi": "🏦", "Eğitim": "🎓", "Araba": "🚗", "Seyahat": "✈️", "Sağlık": "🏥", "Çocuk": "👶", "Toplu Taşıma": "🚌"}
@@ -149,7 +143,7 @@ with tab_gider_label:
                 st.success(f"Kaydedildi. Kalan: {int(yeni_kalan)}"); st.rerun()
 
 # --- SEKME 4: BÜTÇE ---
-with tab_ayrilan_label:
+elif secilen_sekme == "🛡️ Bütçe":
     with st.form("b_form"):
         yeni_l = st.number_input("Yeni Aylık Limit", min_value=0)
         if st.form_submit_button("Başlat"):
