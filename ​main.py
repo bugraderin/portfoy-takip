@@ -26,7 +26,7 @@ enstrumanlar = ['Hisse Senedi', 'Altın', 'Gümüş', 'Fon', 'Döviz', 'Kripto',
  
 # İkonları burada eşleştiriyoruz
 ikonlar = {
-    'Hisse Senedi': '📈', 'Altın': '🟡', 'Gümüş': '⚪', 'Fon': '🏦',
+    'Hisse Senedi': '📈', 'Altın': '🟡🟡', 'Gümüş': '⚪', 'Fon': '🏦',
     'Döviz': '💵', 'Kripto': '🪙', 'Mevduat': '💰', 'BES': '🛡️'
 }
  
