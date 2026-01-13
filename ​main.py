@@ -117,4 +117,29 @@ if data:
         t_guncel = guncel_verisi['Toplam']
         t_degisim = ((t_guncel - t_baslangic) / t_baslangic) * 100 if t_baslangic > 0 else 0
         
-        st.info(f"📅 **{secilen_periyot}** önceki portföy değeri: **{t_baslangic:,.2f} TL** | Toplam Değişim: **%{t_degisim:.2f}
+        st.info(f"📅 **{secilen_periyot}** önceki portföy değeri: **{t_baslangic:,.2f} TL** | Toplam Değişim: **%{t_degisim:.2f}**")
+        
+        # Enstrüman Bazlı Detay
+        st.write("🔍 **Enstrüman Bazlı Yüzdelik Değişimler:**")
+        cols = st.columns(len(enstrumanlar))
+        
+        for i, e in enumerate(enstrumanlar):
+            v_eski = baslangic_verisi[e]
+            v_yeni = guncel_verisi[e]
+            
+            # Değişim hesapla (Sadece eskiden veri varsa)
+            if v_eski > 0:
+                e_degisim = ((v_yeni - v_eski) / v_eski) * 100
+                cols[i].metric(e, f"%{e_degisim:.1f}", delta_color="normal")
+            else:
+                cols[i].text(f"{e}\n(Veri Yok)")
+    else:
+        st.warning(f"Seçilen periyot ({secilen_periyot}) için yeterli geçmiş veri bulunamadı.")
+ 
+    st.divider()
+ 
+    # --- GEÇMİŞ VERİ TABLOSU ---
+    with st.expander("📄 Tüm Geçmiş Veri Tablosunu Gör"):
+        st.dataframe(df.sort_values('tarih', ascending=False))
+else:
+    st.info("💡 Henüz veri bulunamadı.")
