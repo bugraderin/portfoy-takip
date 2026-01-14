@@ -32,40 +32,28 @@ except Exception as e:
 
 # --- ANALİZ VE VERİ FONKSİYONLARI ---
 
-@st.cache_data(ttl=43200)
 def get_tefas_analiz(kod):
     try:
-        # Repodaki temel URL yapısı
-        url = "https://www.tefas.gov.tr/api/DB/GetFundHistory"
+        # Mynet Finans üzerinden fonun sayfasına gidiyoruz
+        url = f"https://finans.mynet.com/yatirimfonlari/detay/{kod}/"
+        headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
         
-        # Buradaki en kritik nokta: Tarihlerin formatı ve Header bilgileri
-        payload = {
-            "fundCode": kod,
-            "startDate": (datetime.now() - timedelta(days=1850)).strftime("%d.%m.%Y"),
-            "endDate": datetime.now().strftime("%d.%m.%Y")
-        }
+        res = requests.get(url, headers=headers, timeout=10)
+        if res.status_code != 200:
+            return None
+            
+        from bs4 import BeautifulSoup
+        soup = BeautifulSoup(res.text, 'html.parser')
         
-        # Repodaki crawler'ın kullandığı tarayıcı kimliği (Browser simulation)
-        headers = {
-            "Accept": "application/json, text/javascript, */*; q=0.01",
-            "X-Requested-With": "XMLHttpRequest",
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-        }
+        # Sayfadaki güncel fiyatı bul (Mynet'teki CSS sınıfına göre)
+        fiyat_text = soup.find("span", {"class": "last-price"}).text
+        fiyat = float(fiyat_text.replace(".", "").replace(",", "."))
         
-        res = requests.post(url, data=payload, headers=headers, timeout=15)
-        
-        if res.status_code == 200:
-            data = res.json()
-            if data:
-                df = pd.DataFrame(data)
-                # Repodaki sütun isimlerini senin koduna uyduruyoruz
-                df = df.rename(columns={"Price": "price", "Date": "date"})
-                df['date'] = pd.to_datetime(df['date'], dayfirst=True)
-                df['price'] = pd.to_numeric(df['price'])
-                return df.sort_values('date')
-        return None
-    except Exception as e:
-        # Hata durumunda boş dönmek yerine sessizce bekleyelim
+        # Geçmiş veriyi çekmek Mynet'te zordur, bu yüzden şimdilik 
+        # sadece güncel fiyatı ve bugünün tarihini içeren bir tablo dönelim
+        df = pd.DataFrame([{"date": datetime.now(), "price": fiyat}])
+        return df
+    except:
         return None
 
 def get_periyodik_getiri(df):
