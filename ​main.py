@@ -126,7 +126,7 @@ with tab_portfoy:
 
         st.metric("Toplam Varlık (TL)", f"{int(toplam_tl):,.0f}".replace(",", "."))
 
-        # --- DEĞİŞİM ANALİZİ (RENK HATASI DÜZELTİLDİ) ---
+        # --- TEK VE DOĞRU DEĞİŞİM ANALİZİ BLOĞU ---
         st.write("### ⏱️ Değişim Analizi")
         periyotlar = {"1 Gün": 1, "1 Ay": 30, "3 Ay": 90, "6 Ay": 180, "1 Yıl": 365}
         secilen_periyot = st.selectbox("Analiz Periyodu Seçin", list(periyotlar.keys()))
@@ -143,27 +143,21 @@ with tab_portfoy:
             else:
                 mask = (df_p['tarih'] > hedef_tarih) & (df_p['tarih'] <= guncel['tarih'])
                 periyot_verileri = df_p.loc[mask]
-                if not periyot_verileri.empty:
-                    baz_deger = float(periyot_verileri['Toplam'].mean())
-                    label_text = f"{secilen_periyot} Ortalamasına Göre"
-                else:
-                    baz_deger = 0
+                baz_deger = float(periyot_verileri['Toplam'].mean()) if not periyot_verileri.empty else 0
+                label_text = f"{secilen_periyot} Ortalamasına Göre"
 
             if baz_deger > 0:
                 fark = guncel_deger - baz_deger
                 yuzde_deg = (fark / baz_deger) * 100
-                
-                # KRİTİK DÜZELTME: % işaretini sona aldık ki eksi (-) en başta olsun.
                 delta_metni_analiz = f"{yuzde_deg:.2f}%"
                 
-                st.metric(
-                    label_text, 
-                    f"{int(fark):,.0f} TL".replace(",", "."), 
-                    delta=delta_metni_analiz
-                )
+                # Ekrana basan tek komut bu olmalı
+                st.metric(label_text, f"{int(fark):,.0f} TL".replace(",", "."), delta=delta_metni_analiz)
             
             if secilen_periyot != "1 Gün":
                 st.caption(f"ℹ️ Bugün, son {secilen_periyot} içindeki genel varlık ortalamanızdan ne kadar saptığınızı görüyorsunuz.")
+        
+        st.divider()
         
         # --- HİBRİT ANALİZ BLOĞU ---
         if not df_p.empty and len(df_p) > 1:
