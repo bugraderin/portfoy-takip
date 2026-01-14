@@ -1,12 +1,9 @@
-import requests
 import streamlit as st
 import gspread
 from google.oauth2.service_account import Credentials
 import pandas as pd
 from datetime import datetime, timedelta
 import plotly.express as px
-import google.generativeai as genai
-import json
 
 # --- SAYFA AYARLARI ---
 st.set_page_config(page_title="Finansal Takip", layout="wide")
@@ -17,7 +14,7 @@ TR_AYLAR_KISA = {'Jan': 'Oca', 'Feb': 'Şub', 'Mar': 'Mar', 'Apr': 'Nis', 'May':
 TR_AYLAR_TAM = {1: "Ocak", 2: "Şubat", 3: "Mart", 4: "Nisan", 5: "Mayıs", 6: "Haziran", 
                 7: "Temmuz", 8: "Ağustos", 9: "Eylül", 10: "Ekim", 11: "Kasım", 12: "Aralık"}
 
-# --- 1. GOOGLE SHEETS & AI BAĞLANTISI ---
+# --- 1. GOOGLE SHEETS BAĞLANTISI ---
 scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
 try:
     creds = Credentials.from_service_account_info(st.secrets["gcp_service_account"], scopes=scope)
@@ -27,7 +24,6 @@ try:
     ws_gelir = spreadsheet.worksheet("Gelirler")
     ws_gider = spreadsheet.worksheet("Giderler")
     ws_ayrilan = spreadsheet.worksheet("Gidere Ayrılan Tutar")
-    ws_ai_kaynak = spreadsheet.worksheet("AI") # Makalelerin olduğu sayfa
 except Exception as e:
     st.error(f"Bağlantı Hatası: {e}"); st.stop()
 
@@ -50,8 +46,8 @@ def get_son_bakiye_ve_limit():
         return 0.0, 0.0
     except: return 0.0, 0.0
 
-# --- SEKMELER ---
-tab_portfoy, tab_gelir, tab_gider, tab_ayrilan, tab_ai = st.tabs(["📊 Portföy", "💵 Gelirler", "💸 Giderler", "🛡️ Bütçe", "🤖 AI Analist"])
+# --- SEKMELER (AI Sekmesi Kaldırıldı) ---
+tab_portfoy, tab_gelir, tab_gider, tab_ayrilan = st.tabs(["📊 Portföy", "💵 Gelirler", "💸 Giderler", "🛡️ Bütçe"])
 
 # --- SEKME 1: PORTFÖY ---
 with tab_portfoy:
@@ -151,68 +147,3 @@ with tab_ayrilan:
         if st.form_submit_button("Başlat"):
             ws_ayrilan.append_row([datetime.now().strftime('%Y-%m-%d'), yeni_l, yeni_l], value_input_option='RAW')
             st.success("Bütçe güncellendi."); st.rerun()
-
-import requests # En üste eklemeyi unutma
-import json
-
-# --- SEKME 5: AI ANALİST ---
-with tab_ai:
-    st.header("🤖 Google AI Stratejik Danışman")
-    
-    if st.button("📊 Verileri ve Kaynakları Analiz Et"):
-        api_key = st.secrets.get("GEMINI_API_KEY")
-        
-        if not api_key:
-            st.error("Secrets kısmında GEMINI_API_KEY bulunamadı.")
-        else:
-            try:
-                # 1. Sheets'ten 'AI' sayfasındaki verileri çek
-                # (A sütununda makalelerin olduğunu varsayıyoruz)
-                raw_notlar = ws_ai_kaynak.col_values(1)[1:] 
-                egitim_notlari = " ".join([str(n) for n in raw_notlar if n])
-                
-                # 2. Güncel portföy değerini hesapla (Hata payını sıfırlamak için)
-                if not df_p.empty:
-                    guncel_toplam = df_p.iloc[-1]['Toplam']
-                    guncel_satir = df_p.iloc[-1]
-                else:
-                    guncel_toplam = 0
-                    guncel_satir = {}
-
-                varlik_detay = ", ".join([f"{e}: {int(guncel_satir.get(e,0))} TL" for e in enstrumanlar if guncel_satir.get(e,0) > 0])
-                kalan_butce, limit = get_son_bakiye_ve_limit()
-                
-                # 3. AI'ya "Öğretilecek" talimat ve veriler
-                prompt_text = f"""
-                SİSTEM TALİMATI: Sen uzman bir finansal danışmansın. 
-                Sana verilen şu makale/notlar senin analiz temelindir: {egitim_notlari}
-                
-                GÜNCEL VERİLER:
-                - Portföy: {varlik_detay}
-                - Toplam Varlık: {int(guncel_toplam)} TL
-                - Bütçe: {int(kalan_butce)} TL kalan (Aylık Limit: {int(limit)} TL)
-                
-                Lütfen bu verileri, sana verdiğim makale notlarındaki stratejilere göre yorumla.
-                """
-                
-                # 4. Doğrudan API Bağlantısı (Kütüphane hatasını baypas eder)
-                # v1beta yerine v1 kullanarak en stabil adrese gidiyoruz
-                url = f"https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key={api_key}"
-                headers = {'Content-Type': 'application/json'}
-                payload = {
-                    "contents": [{"parts": [{"text": prompt_text}]}]
-                }
-                
-                with st.spinner("Gemini makalelerini ve portföyünü analiz ediyor..."):
-                    response = requests.post(url, headers=headers, json=payload)
-                    res_json = response.json()
-                    
-                    if response.status_code == 200:
-                        ai_yaniti = res_json['candidates'][0]['content']['parts'][0]['text']
-                        st.markdown("### 📝 AI Stratejik Raporu")
-                        st.info(ai_yaniti)
-                    else:
-                        st.error(f"Google API Hatası: {res_json.get('error', {}).get('message', 'Bilinmeyen Hata')}")
-                        
-            except Exception as e:
-                st.error(f"Sistem Hatası: {e}")
