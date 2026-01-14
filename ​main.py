@@ -263,18 +263,36 @@ with tab_ayrilan:
 with tab_canli:
     st.subheader("🌐 Canlı Piyasa ve Fon Getiri Analizi")
     
-    # --- VERİ GİRİŞ ALANI ---
-    with st.expander("➕ Yeni Lot / Enstrüman Ekle", expanded=False):
-        with st.form("lot_ekle_form", clear_on_submit=True):
-            col1, col2, col3 = st.columns(3)
-            tur = col1.selectbox("Tür", ["Fon (TEFAS)", "Hisse (BIST)", "Döviz/Altın"])
-            kod = col2.text_input("Kod (Örn: AFT, THYAO, USD, GRAM)").upper()
-            adet = col3.number_input("Adet / Lot", min_value=0.0, step=0.01)
+    # Yeni Lot Ekleme Alanı
+    with st.expander("➕ Yeni Lot / Enstrüman Ekle"):
+        with st.form("lot_ekle_form"):
+            c1, c2, c3 = st.columns(3)
+            tur = c1.selectbox("Tür", ["Fon (TEFAS)", "Hisse (BIST)"])
+            kod = c2.text_input("Kod (Örn: AFT, THYAO)").upper()
+            adet = c3.number_input("Adet", min_value=0.0)
             if st.form_submit_button("Sisteme Kaydet"):
                 ws_lotlar.append_row([datetime.now().strftime('%Y-%m-%d'), tur, kod, adet], value_input_option='RAW')
-                st.success(f"{kod} Lotlar sayfasına eklendi!")
-                st.rerun()
+                st.success(f"{kod} kaydedildi!"); st.rerun()
 
+    # Getiri Analizi
+    st.divider()
+    secilen_kod = st.text_input("🔍 Fon Kodu Yazın (Örn: GMR, AFT)", value="AFT").upper()
+    
+    if secilen_kod:
+        fon_data = get_tefas_analiz(secilen_kod)
+        if fon_data is not None:
+            # 1-3-5 yıllık getirileri hesapla
+            getiriler = get_periyodik_getiri(fon_data)
+            cols = st.columns(len(getiriler))
+            for i, (label, val) in enumerate(getiriler.items()):
+                with cols[i]:
+                    st.metric(label, f"%{val:.2f}" if val else "N/A")
+            
+            fig = px.line(fon_data, x='date', y='price', title=f"{secilen_kod} 5 Yıllık Seyir")
+            st.plotly_chart(fig, use_container_width=True)
+        else:
+            st.error("⚠️ TEFAS verisi şu an çekilemiyor. (IP engeli veya hatalı kod)")
+          
     # --- ANALİZ ALANI ---
     st.divider()
     secilen_kod = st.text_input("🔍 Detaylı Getiri Analizi İçin Fon Kodu Yazın (Örn: GMR, TI3, AFT)", value="AFT").upper()
