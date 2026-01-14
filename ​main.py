@@ -44,6 +44,15 @@ def get_tefas_analiz(kod):
         df = df.sort_values('date')
         return df
     except: return None
+      
+      @st.cache_data(ttl=3600)
+def get_hisse_fiyat(kod):
+    try:
+        # BIST hisseleri için kodun sonuna .IS eklenir
+        tckr = yf.Ticker(f"{kod}.IS")
+        return tckr.fast_info['last_price']
+    except:
+        return None
 
 def get_periyodik_getiri(df):
     if df is None: return {}
