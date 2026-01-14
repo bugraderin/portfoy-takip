@@ -167,33 +167,33 @@ with tab_ai:
                 # 1. Google AI Yapılandırması
                 genai.configure(api_key=api_key)
                 
-                # 2. Makale ve Notları Çek (Öğrenmesi için)
+                # 2. Makale ve Notları Çek (AI'nın öğrenmesi gereken kaynaklar)
                 raw_notlar = ws_ai_kaynak.col_values(1)[1:]
                 egitim_notlari = " ".join([str(n) for n in raw_notlar if n])
                 
-                # 3. Model Tanımlama (System Instruction ile "Öğrenme" sağlanıyor)
-                # Bu kısım AI'ya kimliğini ve Sheets'teki bilgilerini öğretir
+                # 3. Model Tanımlama (Öğrenme burada gerçekleşiyor)
+                # Not: 'system_instruction' hata verirse kütüphane sürümün eskidir.
                 model = genai.GenerativeModel(
                     model_name='gemini-1.5-flash',
-                    system_instruction=f"Sen uzman bir finans danışmanısın. Şu kaynak bilgilere tam hakimsin: {egitim_notlari}"
+                    system_instruction=f"Sen Düzey 3 uzman bir finans danışmanısın. Kullanıcının sunduğu şu makaleler senin temel doktrinindir: {egitim_notlari}"
                 )
                 
-                # 4. Portföy ve Bütçe Verilerini Hazırla
+                # 4. Verileri Hazırla (Değişken hataları düzeltildi)
+                guncel_toplam = df_p.iloc[-1]['Toplam'] if not df_p.empty else 0
                 varlik_detay = ", ".join([f"{e}: {int(guncel.get(e,0))} TL" for e in enstrumanlar if guncel.get(e,0) > 0])
                 kalan_butce, limit = get_son_bakiye_ve_limit()
                 
                 prompt = f"""
-                Aşağıdaki güncel verilerimi seninle paylaştığım makaleler ışığında analiz et:
+                Aşağıdaki güncel finansal verilerimi, sana öğrettiğim makalelerdeki stratejilere göre analiz et:
                 
-                Portföy Durumu: {varlik_detay}
-                Toplam Varlık: {int(toplam_tl)} TL
-                Kalan Bütçe: {int(kalan_butce)} TL (Limit: {int(limit)} TL)
+                Varlık Dağılımı: {varlik_detay}
+                Toplam Portföy Değeri: {int(guncel_toplam)} TL
+                Bütçe Durumu: {int(kalan_butce)} TL kalan (Aylık Limit: {int(limit)} TL)
                 
-                Stratejik tavsiyelerini 3 madde halinde ver.
+                Stratejik yorumlarını ve makalelere dayalı önerilerini bekliyorum.
                 """
                 
-                with st.spinner("Gemini portföyünüzü ve makalelerinizi analiz ediyor..."):
-                    # API üzerinden içerik üretme
+                with st.spinner("Gemini makalelerini hatırlıyor ve analiz ediyor..."):
                     response = model.generate_content(prompt)
                     
                     if response.text:
@@ -203,6 +203,6 @@ with tab_ai:
                         st.warning("AI yanıt üretti ancak içerik boş.")
                         
             except Exception as e:
-                # Hata kodunu detaylıca gösterir ki sorunu anlayalım
+                # Eğer sürüm hatası alırsan (System Instruction hatası) mesajı buraya düşer
                 st.error(f"Google AI Hatası: {e}")
-                st.info("Eğer 404 alıyorsanız, requirements.txt dosyasında google-generativeai sürümünü yükseltip uygulamayı reboot edin.")
+                st.info("İpucu: Eğer 'unexpected keyword system_instruction' hatası alırsanız, bu kütüphane sürümünüzün (google-generativeai) 0.7.2'den eski olduğunu gösterir.")
