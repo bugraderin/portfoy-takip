@@ -34,28 +34,51 @@ except Exception as e:
 @st.cache_data(ttl=43200)
 def get_tefas_analiz(kod):
     try:
-        # Selenium/Crawler yerine doğrudan TEFAS API simülasyonu
         url = "https://www.tefas.gov.tr/api/DB/GetFundHistory"
+        
+        # Tarih formatlarını TEFAS'ın istediği gibi (GG.AA.YYYY) yapalım
+        bitis_tarihi = datetime.now().strftime("%d.%m.%Y")
+        baslangic_tarihi = (datetime.now() - timedelta(days=1850)).strftime("%d.%m.%Y")
+        
         payload = {
             "fundCode": kod,
-            "startDate": (datetime.now() - timedelta(days=1850)).strftime("%d.%m.%Y"),
-            "endDate": datetime.now().strftime("%d.%m.%Y")
+            "startDate": baslangic_tarihi,
+            "endDate": bitis_tarihi
         }
-        # TEFAS'tan veriyi çek
-        import requests
-        res = requests.post(url, data=payload)
-        data = res.json()
         
-        # Veriyi DataFrame'e çevir
-        df = pd.DataFrame(data)
-        # Sütun isimlerini koduna uyumlu hale getir
-        df = df.rename(columns={"Price": "price", "Date": "date"})
-        df['date'] = pd.to_datetime(df['date'], dayfirst=True)
-        df['price'] = pd.to_numeric(df['price'])
-        df = df.sort_values('date')
-        return df
+        # Tarayıcı gibi görünmek
+        headers = {
+            "Accept": "application/json, text/javascript, */*; q=0.01",
+            "Accept-Encoding": "gzip, deflate, br",
+            "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            "X-Requested-With": "XMLHttpRequest",
+            "Origin": "https://www.tefas.gov.tr",
+            "Referer": "https://www.tefas.gov.tr/FonAnaliz.aspx?FonKod=" + kod
+        }
+        
+        # İsteği Gönder
+        res = requests.post(url, data=payload, headers=headers, timeout=15)
+        
+        # Gelen veriyi kontrol et
+        if res.status_code == 200:
+            data = res.json()
+            if not data:
+                return None
+                
+            df = pd.DataFrame(data)
+            # Sütun isimleri bazen büyük-küçük harf duyarlı olabilir
+            df = df.rename(columns={"Price": "price", "Date": "date"})
+            df['date'] = pd.to_datetime(df['date'], dayfirst=True)
+            df['price'] = pd.to_numeric(df['price'])
+            df = df.sort_values('date')
+            return df
+        else:
+            st.error(f"TEFAS Sunucu Hatası: {res.status_code}")
+            return None
+            
     except Exception as e:
-        # Eğer hata alırsak sessizce None dön
+        st.warning(f"Bağlantı deneniyor... ({e})")
         return None
       
 @st.cache_data(ttl=3600)
