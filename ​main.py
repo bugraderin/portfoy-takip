@@ -34,22 +34,38 @@ except Exception as e:
 
 @st.cache_data(ttl=43200)
 def get_tefas_analiz(kod):
-    """TEFAS engeline karşı alternatif veri çekme motoru"""
     try:
-        # Alternatif kaynak üzerinden geçmiş veriyi çekme denemesi
-        url = f"https://rest.yatirimim.com/api/fund/{kod}/history" 
-        headers = {"User-Agent": "Mozilla/5.0"}
-        res = requests.get(url, headers=headers, timeout=10)
+        # Repodaki temel URL yapısı
+        url = "https://www.tefas.gov.tr/api/DB/GetFundHistory"
+        
+        # Buradaki en kritik nokta: Tarihlerin formatı ve Header bilgileri
+        payload = {
+            "fundCode": kod,
+            "startDate": (datetime.now() - timedelta(days=1850)).strftime("%d.%m.%Y"),
+            "endDate": datetime.now().strftime("%d.%m.%Y")
+        }
+        
+        # Repodaki crawler'ın kullandığı tarayıcı kimliği (Browser simulation)
+        headers = {
+            "Accept": "application/json, text/javascript, */*; q=0.01",
+            "X-Requested-With": "XMLHttpRequest",
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        }
+        
+        res = requests.post(url, data=payload, headers=headers, timeout=15)
         
         if res.status_code == 200:
             data = res.json()
-            df = pd.DataFrame(data)
-            # Sütun isimlerini kodun geri kalanıyla uyumlu hale getiriyoruz
-            df = df.rename(columns={"price": "price", "date": "date"})
-            df['date'] = pd.to_datetime(df['date'])
-            return df.sort_values('date')
+            if data:
+                df = pd.DataFrame(data)
+                # Repodaki sütun isimlerini senin koduna uyduruyoruz
+                df = df.rename(columns={"Price": "price", "Date": "date"})
+                df['date'] = pd.to_datetime(df['date'], dayfirst=True)
+                df['price'] = pd.to_numeric(df['price'])
+                return df.sort_values('date')
         return None
-    except:
+    except Exception as e:
+        # Hata durumunda boş dönmek yerine sessizce bekleyelim
         return None
 
 def get_periyodik_getiri(df):
