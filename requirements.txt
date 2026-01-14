@@ -3,4 +3,4 @@ gspread
 google-auth
 pandas
 plotly
-openai
+google-generativeai>=0.7.2
