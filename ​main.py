@@ -28,18 +28,6 @@ except Exception as e:
     st.error(f"Bağlantı Hatası: {e}"); st.stop()
 
 # CSS Düzenlemeleri
-st.markdown("""<style>
-    [data-testid="stMetricValue"] { font-size: 18px !important; }
-    div[data-testid="stMetric"] { background-color: #f8f9fa; padding: 10px; border-radius: 8px; border: 1px solid #eee; }
-    </style>""", unsafe_allow_html=True)
-# CSS Düzenlemeleri
-st.markdown("""<style>
-    /* Metrik değerlerinin font boyutunu ayarlar */
-    [data-testid="stMetricValue"] { font-size: 18px !important; }
-    div[data-testid="stMetric"] { background-color: #f8f9fa; padding: 10px; border-radius: 8px; border: 1px solid #eee; }
-    
-    # CSS Düzenlemeleri
-
 st.markdown("""
 <style>
     /* Metrik fontları */
@@ -65,7 +53,6 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-    # CSS Düzenlemeleri
 
 def get_son_bakiye_ve_limit():
     try:
