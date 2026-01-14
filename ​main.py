@@ -4,7 +4,7 @@ from google.oauth2.service_account import Credentials
 import pandas as pd
 from datetime import datetime, timedelta
 import plotly.express as px
-import openai
+import google.generativeai as genai
 
 # --- SAYFA AYARLARI ---
 st.set_page_config(page_title="Finansal Takip", layout="wide")
@@ -155,38 +155,54 @@ import json
 
 # --- SEKME 5: AI ANALİST ---
 with tab_ai:
-    st.header("🤖 Ücretsiz AI Analist (Gemini Direct)")
+    st.header("🤖 Google AI Stratejik Danışman")
     
-    if st.button("📊 Verileri Analiz Et"):
+    if st.button("📊 Verileri ve Kaynakları Analiz Et"):
         api_key = st.secrets.get("GEMINI_API_KEY")
+        
         if not api_key:
             st.error("Secrets kısmında GEMINI_API_KEY bulunamadı.")
         else:
             try:
-                # Verileri Hazırla
-                notlar_list = ws_ai_kaynak.col_values(1)[1:]
-                egitim_notlari = " ".join([str(n) for n in notlar_list if n])
-                varlik_ozeti = ", ".join([f"{e}: {int(guncel.get(e,0))} TL" for e in enstrumanlar if guncel.get(e,0) > 0])
+                # 1. Google AI Yapılandırması
+                genai.configure(api_key=api_key)
                 
-                prompt = f"Finans danışmanı olarak analiz yap. Notlar: {egitim_notlari}. Portföy: {varlik_ozeti}. Toplam: {int(guncel['Toplam'])} TL."
-
-                # Doğrudan API URL'si (Kütüphane kullanmıyoruz)
-                url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={api_key}"
+                # 2. Makale ve Notları Çek (Öğrenmesi için)
+                raw_notlar = ws_ai_kaynak.col_values(1)[1:]
+                egitim_notlari = " ".join([str(n) for n in raw_notlar if n])
                 
-                payload = {
-                    "contents": [{"parts": [{"text": prompt}]}]
-                }
+                # 3. Model Tanımlama (System Instruction ile "Öğrenme" sağlanıyor)
+                # Bu kısım AI'ya kimliğini ve Sheets'teki bilgilerini öğretir
+                model = genai.GenerativeModel(
+                    model_name='gemini-1.5-flash',
+                    system_instruction=f"Sen uzman bir finans danışmanısın. Şu kaynak bilgilere tam hakimsin: {egitim_notlari}"
+                )
                 
-                with st.spinner("Analiz ediliyor..."):
-                    response = requests.post(url, json=payload)
-                    result = response.json()
+                # 4. Portföy ve Bütçe Verilerini Hazırla
+                varlik_detay = ", ".join([f"{e}: {int(guncel.get(e,0))} TL" for e in enstrumanlar if guncel.get(e,0) > 0])
+                kalan_butce, limit = get_son_bakiye_ve_limit()
+                
+                prompt = f"""
+                Aşağıdaki güncel verilerimi seninle paylaştığım makaleler ışığında analiz et:
+                
+                Portföy Durumu: {varlik_detay}
+                Toplam Varlık: {int(toplam_tl)} TL
+                Kalan Bütçe: {int(kalan_butce)} TL (Limit: {int(limit)} TL)
+                
+                Stratejik tavsiyelerini 3 madde halinde ver.
+                """
+                
+                with st.spinner("Gemini portföyünüzü ve makalelerinizi analiz ediyor..."):
+                    # API üzerinden içerik üretme
+                    response = model.generate_content(prompt)
                     
-                    # Yanıtı ekrana yazdır
-                    if "candidates" in result:
-                        text = result["candidates"][0]["content"]["parts"][0]["text"]
-                        st.info(text)
+                    if response.text:
+                        st.markdown("### 📝 AI Stratejik Raporu")
+                        st.info(response.text)
                     else:
-                        st.error(f"API Yanıt Vermedi: {result}")
+                        st.warning("AI yanıt üretti ancak içerik boş.")
                         
             except Exception as e:
-                st.error(f"Bağlantı Hatası: {e}")
+                # Hata kodunu detaylıca gösterir ki sorunu anlayalım
+                st.error(f"Google AI Hatası: {e}")
+                st.info("Eğer 404 alıyorsanız, requirements.txt dosyasında google-generativeai sürümünü yükseltip uygulamayı reboot edin.")
