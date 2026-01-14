@@ -31,7 +31,7 @@ except Exception as e:
 
 # --- GEMINI AI YAPILANDIRMASI ---
 if "GEMINI_API_KEY" in st.secrets:
-    genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
+    genai.configure(api_key=st.secrets["GEMINI_API_KEY"], transport='rest')
 else:
     st.warning("⚠️ GEMINI_API_KEY bulunamadı.")
 
@@ -167,7 +167,7 @@ with tab_ai:
             
             # Model Yapılandırması
             model = genai.GenerativeModel(
-    model_name='gemini-1.5-flash', # Başına 'models/' koymadan, en güncel haliyle
+    model_name='gemini-pro', # Bunu 'gemini-pro' yapıyoruz
     system_instruction=f"Sen Düzey 3 uzmanısın. Notların: {egitim_notlari}"
 )
             
