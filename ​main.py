@@ -36,21 +36,25 @@ except Exception as e:
 
 def get_tefas_analiz(kod):
     try:
-        # Google Sheets'ten verileri çekiyoruz
+        # 1. Sheets'teki 'Lotlar' sayfasını oku
         data = ws_lotlar.get_all_records()
         df_sheets = pd.DataFrame(data)
         
-        # 'Kod' sütununda seçilen fonu buluyoruz
+        # 2. Kod sütununda aradığımız fonu bul (Örn: AFT)
         satir = df_sheets[df_sheets['Kod'] == kod]
         
         if not satir.empty:
-            # Sheets'teki 'GuncelFiyat' sütunundaki değeri al
+            # 3. Sheets'teki 'GuncelFiyat' sütunundaki değeri al
             fiyat = satir.iloc[-1]['GuncelFiyat']
-            # Sayıya çeviriyoruz
+            
+            # Eğer Sheets henüz fiyat çekemediyse veya hata varsa None dön
+            if fiyat == "" or fiyat == "Veri yok" or "Hata" in str(fiyat):
+                return None
+                
             fiyat_float = float(str(fiyat).replace(",", "."))
             return pd.DataFrame([{'date': datetime.now(), 'price': fiyat_float}])
         return None
-    except Exception as e:
+    except:
         return None
       
 def get_periyodik_getiri(df):
