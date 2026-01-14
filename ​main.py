@@ -1,11 +1,11 @@
+import yfinance as yf
+import requests
 import streamlit as st
 import gspread
 from google.oauth2.service_account import Credentials
 import pandas as pd
 from datetime import datetime, timedelta
 import plotly.express as px
-import yfinance as yf
-import requests
 
 # --- SAYFA AYARLARI ---
 st.set_page_config(page_title="Finansal Takip", layout="wide")
@@ -32,33 +32,23 @@ except Exception as e:
 
 # --- ANALİZ VE VERİ FONKSİYONLARI ---
 
-
-import requests
-from bs4 import BeautifulSoup
-
-def get_fon_fiyat_alternatif(kod):
+@st.cache_data(ttl=43200)
+def get_tefas_analiz(kod):
+    """TEFAS engeline karşı alternatif veri çekme motoru"""
     try:
-        # Örnek Mynet link yapısı
-        url = f"https://finans.mynet.com/yatirimfonlari/detay/{kod}/"
+        # Alternatif kaynak üzerinden geçmiş veriyi çekme denemesi
+        url = f"https://rest.yatirimim.com/api/fund/{kod}/history" 
         headers = {"User-Agent": "Mozilla/5.0"}
         res = requests.get(url, headers=headers, timeout=10)
-        soup = BeautifulSoup(res.text, 'html.parser')
         
-        # Sayfadaki fiyat bilgisini bulmaya çalışıyoruz
-        # Not: Mynet'in HTML yapısına göre 'span' veya 'div' sınıfları değişebilir
-        fiyat_etiketi = soup.find("span", {"class": "last-price"}) # Bu bir örnektir
-        if fiyat_etiketi:
-            return float(fiyat_etiketi.text.replace(",", "."))
+        if res.status_code == 200:
+            data = res.json()
+            df = pd.DataFrame(data)
+            # Sütun isimlerini kodun geri kalanıyla uyumlu hale getiriyoruz
+            df = df.rename(columns={"price": "price", "date": "date"})
+            df['date'] = pd.to_datetime(df['date'])
+            return df.sort_values('date')
         return None
-    except:
-        return None
-      
-@st.cache_data(ttl=3600)
-def get_hisse_fiyat(kod):
-    try:
-        # BIST hisseleri için kodun sonuna .IS eklenir
-        tckr = yf.Ticker(f"{kod}.IS")
-        return tckr.fast_info['last_price']
     except:
         return None
 
@@ -76,6 +66,14 @@ def get_periyodik_getiri(df):
         else:
             getiriler[etiket] = None
     return getiriler
+
+@st.cache_data(ttl=3600)
+def get_hisse_fiyat(kod):
+    try:
+        tckr = yf.Ticker(f"{kod}.IS")
+        return tckr.fast_info['last_price']
+    except:
+        return None
 
 # CSS Düzenlemeleri
 st.markdown("""<style>
@@ -119,10 +117,8 @@ with tab_portfoy:
         guncel = df_p.iloc[-1]
         toplam_tl = guncel['Toplam']
 
-        # TOPLAM VARLIK (Değişim metriği kaldırıldı)
         st.metric("Toplam Varlık (TL)", f"{int(toplam_tl):,.0f}".replace(",", "."))
 
-        # SEÇENEKLİ DÖNEMSEL DEĞİŞİM (Akıllı Mantık)
         st.write("### ⏱️ Değişim Analizi")
         periyotlar = {"1 Gün": 1, "1 Ay": 30, "3 Ay": 90, "6 Ay": 180, "1 Yıl": 365}
         secilen_periyot = st.selectbox("Analiz Periyodu Seçin", list(periyotlar.keys()))
@@ -130,11 +126,10 @@ with tab_portfoy:
         gun_farki = periyotlar[secilen_periyot]
         hedef_tarih = guncel['tarih'] - timedelta(days=gun_farki)
         
-        # Seçilen günden önceki en yakın kaydı bul, yoksa mevcut en eski kaydı al
         gecmis_data = df_p[df_p['tarih'] <= hedef_tarih]
         if gecmis_data.empty and len(df_p) > 1:
-            gecmis_data = df_p.head(1) # Elindeki en eski kaydı baz al
-            st.caption(f"ℹ️ Seçilen periyot için yeterli geçmiş veri olmadığından, sistemdeki en eski kayıt ({gecmis_data.iloc[0]['tarih'].strftime('%d.%m.%Y')}) baz alındı.")
+            gecmis_data = df_p.head(1)
+            st.caption(f"ℹ️ En eski kayıt ({gecmis_data.iloc[0]['tarih'].strftime('%d.%m.%Y')}) baz alındı.")
         
         if not gecmis_data.empty and len(df_p) > 1:
             eski_deger = gecmis_data.iloc[-1]['Toplam']
@@ -142,11 +137,8 @@ with tab_portfoy:
                 fark = toplam_tl - eski_deger
                 yuzde = (fark / eski_deger) * 100
                 st.metric(f"{secilen_periyot} Değişimi", f"{int(fark):,.0f} TL".replace(",", "."), f"%{yuzde:.2f}")
-        else:
-            st.info("Kıyaslama yapabilmek için en az 2 farklı günlük kayıt gereklidir.")
 
         st.divider()
-        # Enstrüman metrikleri
         onceki = df_p.iloc[-2] if len(df_p) > 1 else guncel
         varlik_data = []
         for e in enstrumanlar:
@@ -165,15 +157,11 @@ with tab_portfoy:
         with sub_tab1:
             df_v['Etiket'] = df_v['Icon'] + " " + df_v['Cins']
             fig_p = px.pie(df_v, values='Tutar', names='Etiket', hole=0.4, color_discrete_sequence=px.colors.qualitative.Pastel)
-            fig_p.update_traces(hovertemplate="%{label}<br>Tutar: %{value:,.0f}")
             st.plotly_chart(fig_p, use_container_width=True)
         with sub_tab2:
             df_p['tarih_tr'] = df_p['tarih'].dt.day.astype(str) + " " + df_p['tarih'].dt.month.map(TR_AYLAR_TAM)
             fig_l = px.line(df_p, x='tarih', y='Toplam', markers=True, title="Toplam Varlık Seyri")
-            fig_l.update_traces(customdata=df_p['tarih_tr'], hovertemplate="Tarih: %{customdata}<br>Toplam: %{y:,.0f}")
-            fig_l.update_xaxes(tickvals=df_p['tarih'], ticktext=[f"{d.day} {TR_AYLAR_KISA.get(d.strftime('%b'))}" for d in df_p['tarih']], title="Tarih")
-            fig_l.update_layout(dragmode='pan', modebar_remove=['select2d', 'lasso2d', 'zoomIn2d', 'zoomOut2d', 'autoScale2d', 'resetScale2d', 'toImage'])
-            st.plotly_chart(fig_l, use_container_width=True, config={'scrollZoom': True})
+            st.plotly_chart(fig_l, use_container_width=True)
 
 # --- SEKME 2: GELİRLER ---
 with tab_gelir:
@@ -187,19 +175,6 @@ with tab_gelir:
             toplam = (m or 0) + (p or 0) + (y or 0)
             ws_gelir.append_row([datetime.now().strftime('%Y-%m-%d'), m or 0, p or 0, y or 0, toplam], value_input_option='RAW')
             st.success("Kaydedildi."); st.rerun()
-
-    data_g = ws_gelir.get_all_records()
-    if data_g:
-        df_g = pd.DataFrame(data_g)
-        df_g['tarih'] = pd.to_datetime(df_g['tarih'], errors='coerce')
-        for col in ["Maaş", "Prim&Promosyon", "Yatırımlar", "Toplam"]:
-            if col in df_g.columns: df_g[col] = pd.to_numeric(df_g[col], errors='coerce').fillna(0)
-        df_g['tarih_tr'] = df_g['tarih'].dt.month.map(TR_AYLAR_TAM) + " " + df_g['tarih'].dt.year.astype(str)
-        fig_gl = px.line(df_g, x='tarih', y='Toplam', markers=True, title="Aylık Gelir Gelişimi")
-        fig_gl.update_traces(customdata=df_g['tarih_tr'], hovertemplate="Dönem: %{customdata}<br>Gelir: %{y:,.0f}")
-        fig_gl.update_xaxes(tickvals=df_g['tarih'], ticktext=[f"{TR_AYLAR_KISA.get(d.strftime('%b'))} {d.year}" for d in df_g['tarih']], title="Dönem")
-        fig_gl.update_layout(dragmode='pan', modebar_remove=['select2d', 'lasso2d', 'zoomIn2d', 'zoomOut2d', 'autoScale2d', 'resetScale2d', 'toImage'])
-        st.plotly_chart(fig_gl, use_container_width=True, config={'scrollZoom': True})
 
 # --- SEKME 3: GİDERLER ---
 with tab_gider:
@@ -217,21 +192,6 @@ with tab_gider:
                 ws_ayrilan.append_row([datetime.now().strftime('%Y-%m-%d'), limit, yeni_kalan], value_input_option='RAW')
                 st.success(f"Kaydedildi. Kalan: {int(yeni_kalan)}"); st.rerun()
 
-    data_gi = ws_gider.get_all_records()
-    if data_gi:
-        df_gi = pd.DataFrame(data_gi)
-        kats = list(gider_ikonlari.keys())
-        for c in kats:
-            if c in df_gi.columns: df_gi[c] = pd.to_numeric(df_gi[c], errors='coerce').fillna(0)
-        top_gi = df_gi[kats].sum().reset_index()
-        top_gi.columns = ['Kategori', 'Tutar']
-        top_gi['Etiket'] = top_gi['Kategori'].map(lambda x: f"{gider_ikonlari.get(x, '')} {x}")
-        if top_gi['Tutar'].sum() > 0:
-            st.divider()
-            fig_g_pie = px.pie(top_gi[top_gi['Tutar']>0], values='Tutar', names='Etiket', hole=0.4, title="Toplam Gider Dağılımı", color_discrete_sequence=px.colors.qualitative.Pastel)
-            fig_g_pie.update_traces(hovertemplate="%{label}<br>Tutar: %{value:,.0f}")
-            st.plotly_chart(fig_g_pie, use_container_width=True)
-
 # --- SEKME 4: BÜTÇE ---
 with tab_ayrilan:
     with st.form("b_form"):
@@ -240,74 +200,45 @@ with tab_ayrilan:
             ws_ayrilan.append_row([datetime.now().strftime('%Y-%m-%d'), yeni_l, yeni_l], value_input_option='RAW')
             st.success("Bütçe güncellendi."); st.rerun()
 
-
-# --- 5. SEKME 5: CANLI VERİ & TEFAS İÇERİĞİ ---
+# --- SEKME 5: CANLI VERİ & TEFAS İÇERİĞİ ---
 with tab_canli:
     st.subheader("🌐 Canlı Piyasa ve Fon Getiri Analizi")
     
-    # Yeni Lot Ekleme Alanı
-    with st.expander("➕ Yeni Lot / Enstrüman Ekle"):
-        with st.form("lot_ekle_form"):
-            c1, c2, c3 = st.columns(3)
-            tur = c1.selectbox("Tür", ["Fon (TEFAS)", "Hisse (BIST)"])
-            kod = c2.text_input("Kod (Örn: AFT, THYAO)").upper()
-            adet = c3.number_input("Adet", min_value=0.0)
+    with st.expander("➕ Yeni Lot / Enstrüman Ekle", expanded=False):
+        with st.form("lot_ekle_form", clear_on_submit=True):
+            col1, col2, col3 = st.columns(3)
+            tur = col1.selectbox("Tür", ["Fon (TEFAS)", "Hisse (BIST)", "Döviz/Altın"])
+            kod = col2.text_input("Kod (Örn: AFT, THYAO, USD, GRAM)").upper()
+            adet = col3.number_input("Adet / Lot", min_value=0.0, step=0.01)
             if st.form_submit_button("Sisteme Kaydet"):
                 ws_lotlar.append_row([datetime.now().strftime('%Y-%m-%d'), tur, kod, adet], value_input_option='RAW')
-                st.success(f"{kod} kaydedildi!"); st.rerun()
+                st.success(f"{kod} Lotlar sayfasına eklendi!"); st.rerun()
 
-    # Getiri Analizi
     st.divider()
-    secilen_kod = st.text_input("🔍 Fon Kodu Yazın (Örn: GMR, AFT)", value="AFT").upper()
+    secilen_kod = st.text_input("🔍 Fon Analizi (Örn: GMR, TI3, AFT)", value="AFT").upper()
     
     if secilen_kod:
-        fon_data = get_tefas_analiz(secilen_kod)
-        if fon_data is not None:
-            # 1-3-5 yıllık getirileri hesapla
-            getiriler = get_periyodik_getiri(fon_data)
-            cols = st.columns(len(getiriler))
-            for i, (label, val) in enumerate(getiriler.items()):
-                with cols[i]:
-                    st.metric(label, f"%{val:.2f}" if val else "N/A")
-            
-            fig = px.line(fon_data, x='date', y='price', title=f"{secilen_kod} 5 Yıllık Seyir")
-            st.plotly_chart(fig, use_container_width=True)
-        else:
-            st.error("⚠️ TEFAS verisi şu an çekilemiyor. (IP engeli veya hatalı kod)")
-          
-    # --- ANALİZ ALANI ---
-    st.divider()
-    secilen_kod = st.text_input("🔍 Detaylı Getiri Analizi İçin Fon Kodu Yazın (Örn: GMR, TI3, AFT)", value="AFT").upper()
-    
-    if secilen_kod:
-        with st.spinner("TEFAS'tan 5 yıllık veriler analiz ediliyor..."):
+        with st.spinner("Veriler analiz ediliyor..."):
             fon_data = get_tefas_analiz(secilen_kod)
             if fon_data is not None:
                 getiriler = get_periyodik_getiri(fon_data)
-                
-                # Getiri Metrikleri
                 m_cols = st.columns(len(getiriler))
                 for i, (label, val) in enumerate(getiriler.items()):
                     with m_cols[i]:
                         if val is not None:
                             st.metric(label, f"%{val:.2f}", delta=f"{val:.1f}%")
-                        else:
-                            st.metric(label, "N/A")
+                        else: st.metric(label, "N/A")
                 
-                # Grafik
-                fig_fon = px.line(fon_data, x='date', y='price', title=f"{secilen_kod} Fiyat Seyri (5 Yıl)")
+                fig_fon = px.line(fon_data, x='date', y='price', title=f"{secilen_kod} Fiyat Seyri")
                 st.plotly_chart(fig_fon, use_container_width=True)
             else:
-                st.warning("Veri bulunamadı. Lütfen fon kodunu kontrol edin.")
+                st.warning("Veri otomatik çekilemedi. (Sunucu Engeli veya Hatalı Kod)")
 
-    # --- MEVCUT LOTLAR TABLOSU ---
     st.divider()
     st.write("### 📂 Kayıtlı Lotlarım")
     try:
         lot_df = pd.DataFrame(ws_lotlar.get_all_records())
         if not lot_df.empty:
             st.dataframe(lot_df, use_container_width=True)
-        else:
-            st.info("Henüz lot kaydı bulunmuyor.")
     except:
-        st.error("Lotlar sayfası okunamadı. Lütfen Google Sheets'te 'Lotlar' sayfasını oluşturun.")
+        st.error("Lotlar sayfası okunamadı.")
