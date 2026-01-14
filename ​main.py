@@ -39,7 +39,10 @@ st.markdown("""<style>
     div[data-testid="stMetric"] { background-color: #f8f9fa; padding: 10px; border-radius: 8px; border: 1px solid #eee; }
     
     # CSS Düzenlemeleri
-st.markdown("""<style>
+
+st.markdown("""
+<style>
+    /* Metrik fontları */
     [data-testid="stMetricValue"] { font-size: 18px !important; }
     div[data-testid="stMetric"] { background-color: #f8f9fa; padding: 10px; border-radius: 8px; border: 1px solid #eee; }
     
@@ -55,18 +58,14 @@ st.markdown("""<style>
         -moz-appearance: textfield;
     }
 
-    /* Streamlit'in kendi içindeki artı-eksi butonlarını gizler */
+    /* Streamlit artı-eksi butonlarını gizler */
     [data-testid="stNumberInputStepUp"], [data-testid="stNumberInputStepDown"] {
         display: none !important;
     }
-    
-    /* Kutunun genişliğini ve görünürlüğünü korur */
-    [data-testid="stNumberInput"] div[data-baseweb="input"] {
-        padding-right: 0px !important;
-    }
-    </style>""", unsafe_allow_html=True)
+</style>
+""", unsafe_allow_html=True)
 
-# CSS Düzenlemeleri
+    # CSS Düzenlemeleri
 
 def get_son_bakiye_ve_limit():
     try:
