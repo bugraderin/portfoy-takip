@@ -15,11 +15,6 @@ RENK_HARITASI = {
     'Mevduat': '#17becf', 'BES': '#d62728'
 }
 
-# --- RENK PALETİ TANIMLAMA (Modern ve Birbirine Uyumlu) ---
-RENK_HARITASI = {
-    'Hisse Senedi': '#1f77b4', 'Altın': '#FFD700', 'Gümüş': '#C0C0C0', 
-    'Fon': '#9467bd', 'Döviz': '#2ca02c', 'Kripto': '#ff7f0e', 
-    'Mevduat': '#17becf', 'BES': '#d62728'
 
 # Türkçe Ay Sözlükleri
 TR_AYLAR_KISA = {'Jan': 'Oca', 'Feb': 'Şub', 'Mar': 'Mar', 'Apr': 'Nis', 'May': 'May', 'Jun': 'Haz',
