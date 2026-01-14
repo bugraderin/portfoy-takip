@@ -26,7 +26,7 @@ except Exception as e:
     st.error(f"Google Sheets Bağlantı Hatası: {e}")
     st.stop()
 
-# --- GEMINI AI YAPILANDIRMASI (Try Bloğundan Sonra) ---
+# --- GEMINI AI YAPILANDIRMASI ---
 if "GEMINI_API_KEY" in st.secrets:
     try:
         genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
@@ -45,7 +45,7 @@ def get_son_bakiye_ve_limit():
         return 0.0, 0.0
     except: return 0.0, 0.0
 
-# --- CSS Düzenlemeleri (Renk ve Görünüm) ---
+# --- CSS Düzenlemeleri ---
 st.markdown("""
 <style>
     [data-testid="stMetricValue"] { font-size: 20px !important; font-weight: bold; }
@@ -53,98 +53,106 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# Türkçe Ay Sözlükleri
-TR_AYLAR_KISA = {'Jan': 'Oca', 'Feb': 'Şub', 'Mar': 'Mar', 'Apr': 'Nis', 'May': 'May', 'Jun': 'Haz',
-                'Jul': 'Tem', 'Aug': 'Ağu', 'Sep': 'Eyl', 'Oct': 'Eki', 'Nov': 'Kas', 'Dec': 'Ara'}
-TR_AYLAR_TAM = {1: "Ocak", 2: "Şubat", 3: "Mart", 4: "Nisan", 5: "Mayıs", 6: "Haziran", 
-                7: "Temmuz", 8: "Ağustos", 9: "Eylül", 10: "Ekim", 11: "Kasım", 12: "Aralık"}
-
-# --- SEKMELER ---
-tab_portfoy, tab_gelir, tab_gider, tab_ayrilan, tab_ai = st.tabs(["📊 Portföy", "💵 Gelirler", "💸 Giderler", "🛡️ Bütçe", "🤖 AI Analist"])
-
 # --- VERİ HAZIRLIĞI ---
 data_p = ws_portfoy.get_all_records()
 enstruman_bilgi = {'Hisse Senedi': '📈', 'Altın': '🟡', 'Gümüş': '⚪', 'Fon': '🏦', 'Döviz': '💵', 'Kripto': '₿', 'Mevduat': '💰', 'BES': '🛡️'}
 enstrumanlar = list(enstruman_bilgi.keys())
 
+toplam_tl = 0
+guncel = {}
 if data_p:
     df_p = pd.DataFrame(data_p)
     df_p['tarih'] = pd.to_datetime(df_p['tarih'], errors='coerce')
     df_p = df_p.dropna(subset=['tarih']).sort_values('tarih')
-    for col in enstrumanlar: df_p[col] = pd.to_numeric(df_p[col], errors='coerce').fillna(0)
+    for col in enstrumanlar: 
+        df_p[col] = pd.to_numeric(df_p[col], errors='coerce').fillna(0)
     df_p['Toplam'] = df_p[enstrumanlar].sum(axis=1)
     guncel = df_p.iloc[-1]
     toplam_tl = guncel['Toplam']
+
+# --- SEKMELER ---
+tab_portfoy, tab_gelir, tab_gider, tab_ayrilan, tab_ai = st.tabs(["📊 Portföy", "💵 Gelirler", "💸 Giderler", "🛡️ Bütçe", "🤖 AI Analist"])
 
 # --- SEKME 1: PORTFÖY ---
 with tab_portfoy:
     with st.sidebar:
         st.header("📥 Portföy Güncelle")
-        # Sidebar form kodları (Kısaltıldı, eski kodunla aynı mantık)
         with st.form("p_form", clear_on_submit=True):
             p_in = {e: st.number_input(f"{enstruman_bilgi[e]} {e}", min_value=0.0, value=None) for e in enstrumanlar}
             if st.form_submit_button("🚀 Kaydet"):
-                yeni_satir = [datetime.now().strftime('%Y-%m-%d')] + [p_in[e] if p_in[e] is not None else float(guncel[e]) for e in enstrumanlar]
+                yeni_satir = [datetime.now().strftime('%Y-%m-%d')] + [p_in[e] if p_in[e] is not None else float(guncel.get(e, 0)) for e in enstrumanlar]
                 ws_portfoy.append_row(yeni_satir, value_input_option='RAW')
                 st.rerun()
 
     st.metric("Toplam Varlık", f"{int(toplam_tl):,.0f} TL".replace(",", "."))
 
-    # Değişim Analizi
-    st.write("### ⏱️ Değişim Analizi")
-    periyotlar = {"1 Gün": 1, "1 Ay": 30, "3 Ay": 90, "1 Yıl": 365}
-    secilen_p = st.selectbox("Periyot", list(periyotlar.keys()))
-    
-    if len(df_p) > 1:
-        hedef_tarih = guncel['tarih'] - timedelta(days=periyotlar[secilen_p])
-        baz_deger = float(df_p.iloc[-2]['Toplam']) if secilen_p == "1 Gün" else float(df_p[df_p['tarih'] > hedef_tarih]['Toplam'].mean())
-        fark = toplam_tl - baz_deger
-        yuzde = (fark / baz_deger) * 100 if baz_deger > 0 else 0
-        st.metric(f"{secilen_p} Değişimi", f"{int(fark):,.0f} TL".replace(",", "."), delta=f"{yuzde:.2f}%")
+    if data_p and len(df_p) > 1:
+        st.write("### ⏱️ Değişim Analizi")
+        onceki_toplam = float(df_p.iloc[-2]['Toplam'])
+        fark = toplam_tl - onceki_toplam
+        yuzde = (fark / onceki_toplam) * 100 if onceki_toplam > 0 else 0
+        st.metric("Son Güncellemeden Beri", f"{int(fark):,.0f} TL".replace(",", "."), delta=f"{yuzde:.2f}%")
 
     st.divider()
-    # Enstrümanlar
-    onceki = df_p.iloc[-2] if len(df_p) > 1 else guncel
     cols = st.columns(4)
-    varlik_listesi = []
     for i, e in enumerate(enstrumanlar):
-        if guncel[e] > 0:
-            degisim = ((guncel[e] - onceki[e]) / onceki[e] * 100) if onceki[e] > 0 else 0
-            cols[i % 4].metric(f"{enstruman_bilgi[e]} {e}", f"{int(guncel[e]):,.0f}".replace(",", "."), delta=f"{degisim:.2f}%")
-            varlik_listesi.append({'Cins': e, 'Tutar': guncel[e]})
+        deger = guncel.get(e, 0)
+        if deger > 0:
+            cols[i % 4].metric(f"{enstruman_bilgi[e]} {e}", f"{int(deger):,.0f}".replace(",", "."))
 
 # --- SEKME 5: AI ANALİST ---
 with tab_ai:
     st.header("🤖 AI Stratejik Danışman")
     kalan, limit = get_son_bakiye_ve_limit()
     
-    # Sheets'ten makale verilerini çek
-    try:
-        makale_notlari = " ".join(ws_ai_kaynak.col_values(1)[1:]) # Başlık hariç tüm A sütunu
-    except:
-        makale_notlari = "Finansal genel bilgiler."
+    if st.button("📊 Verilerimi ve Makaleleri Analiz Et"):
+        # Sheets'ten makale/eğitim verilerini çek (A sütunu, A1 başlık hariç)
+        try:
+            # A sütununu al ve boş olmayanları birleştir
+            raw_notlar = ws_ai_kaynak.col_values(1)[1:]
+            makale_notlari = " ".join([str(n) for n in raw_notlar if n])
+        except Exception as e:
+            makale_notlari = "Finansal risk yönetimi ve portföy çeşitlendirmesi."
 
-    if st.button("📊 Verilerimi ve Makaleleri Harmanla"):
         with st.spinner("Yapay zeka derin analiz yapıyor..."):
-            # Dinamik Sistem Talimatı
-            model = genai.GenerativeModel(
-                model_name='gemini-1.5-flash',
-                system_instruction=f"Sen Düzey 3 finans uzmanısın. Şu bilgilere sahipsin: {makale_notlari}. Kullanıcının verilerini bu uzmanlıkla yorumla."
-            )
-            
-            varlik_metni = ", ".join([f"{v['Cins']}: {int(v['Tutar'])} TL" for v in varlik_listesi])
-            prompt = f"""
-            GÜNCEL VERİLER:
-            - Portföy: {varlik_metni}
-            - Toplam: {int(toplam_tl)} TL
-            - Kalan Aylık Bütçe: {int(kalan)} TL / {int(limit)} TL
-            
-            GÖREV: Bu verileri makale bilgilerine dayanarak analiz et. Riskleri ve yapılması gereken 3 stratejik hamleyi söyle.
-            """
-            
-            response = model.generate_content(prompt)
-            st.markdown("### 📝 Stratejik Analiz Notları")
-            st.info(response.text)
+            try:
+                # Modeli tanımla (Başına models/ ekleyerek)
+                model = genai.GenerativeModel(
+                    model_name='models/gemini-1.5-flash',
+                    system_instruction=f"Sen Düzey 3 finans uzmanısın. Şu kaynak bilgilere sahipsin: {makale_notlari}. Kullanıcının verilerini bu bilgiler ışığında analiz et."
+                )
+                
+                # Veri Özetini Hazırla
+                varlik_detay = ", ".join([f"{e}: {int(guncel.get(e,0))} TL" for e in enstrumanlar if guncel.get(e,0) > 0])
+                prompt = f"""
+                KULLANICI VERİLERİ:
+                - Mevcut Portföy: {varlik_detay}
+                - Toplam Varlık: {int(toplam_tl)} TL
+                - Aylık Kalan Bütçe: {int(kalan)} TL (Limit: {int(limit)} TL)
+                
+                ANALİZ İSTEĞİ:
+                Bu verileri elindeki Düzey 3 finans notlarıyla karşılaştır. 
+                1. Portföydeki riskli yoğunlaşmalar var mı?
+                2. Gider ve bütçe dengesi stratejik olarak uygun mu?
+                3. Makalelerindeki stratejilere göre 3 somut öneri ver.
+                """
+                
+                response = model.generate_content(prompt)
+                st.markdown("### 📝 Stratejik Analiz Raporu")
+                st.info(response.text)
+                st.caption(f"Analiz Tarihi: {datetime.now().strftime('%d.%m.%Y %H:%M')}")
+            except Exception as e:
+                st.error(f"Analiz sırasında hata oluştu: {e}")
 
-# --- GELİR/GİDER/BÜTÇE (Mevcut kodların devamı...) ---
-# (Bu kısımları bozmadan kendi dosyanın sonundaki gibi bırakabilirsin)
+# --- DİĞER SEKMELER (GELİR/GİDER/BÜTÇE) ---
+with tab_gelir:
+    st.subheader("💰 Gelir Kayıtları")
+    # Mevcut gelir kodlarını buraya ekleyebilirsin
+
+with tab_gider:
+    st.subheader("💸 Gider Takibi")
+    # Mevcut gider kodlarını buraya ekleyebilirsin
+
+with tab_ayrilan:
+    st.subheader("🛡️ Bütçe Yönetimi")
+    # Mevcut bütçe kodlarını buraya ekleyebilirsin
