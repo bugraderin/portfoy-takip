@@ -1,11 +1,11 @@
-import yfinance as yf
-from tefas import Crawler
 import streamlit as st
 import gspread
 from google.oauth2.service_account import Credentials
 import pandas as pd
 from datetime import datetime, timedelta
 import plotly.express as px
+import yfinance as yf
+import requests
 
 # --- SAYFA AYARLARI ---
 st.set_page_config(page_title="Finansal Takip", layout="wide")
