@@ -1,241 +1,360 @@
-import yfinance as yf
-import requests
-import streamlit as st
-import gspread
-from google.oauth2.service_account import Credentials
-import pandas as pd
-from datetime import datetime, timedelta
-import plotly.express as px
-from tefas import Crawler
-tefas_crawler = Crawler()
+Niyetini tut dediğinde 3den geriye saysın o sayarken niyetini tut yazısı tamamen kaybolmayacak şekilde yanıp sönsün yani pulse efekti gibi
+üst solda totem yap değil totemci yazsın 
+öneri alanının ismi Totem Öner olsun bize iletebileceği bir text box olsun buraya totemini yazabilsin.  Altında da altın bu totemi yaptığında %kaç tutuyor gibi bir alan olsun oraya rakam yazabilsin. harf ve özel karakter kullanımı yasak olacak bu alanda.
 
-# --- SAYFA AYARLARI ---
-st.set_page_config(page_title="Finansal Takip", layout="wide")
 
-# Türkçe Ay Sözlükleri
-TR_AYLAR_KISA = {'Jan': 'Oca', 'Feb': 'Şub', 'Mar': 'Mar', 'Apr': 'Nis', 'May': 'May', 'Jun': 'Haz',
-                'Jul': 'Tem', 'Aug': 'Ağu', 'Sep': 'Eyl', 'Oct': 'Eki', 'Nov': 'Kas', 'Dec': 'Ara'}
-TR_AYLAR_TAM = {1: "Ocak", 2: "Şubat", 3: "Mart", 4: "Nisan", 5: "Mayıs", 6: "Haziran", 
-                7: "Temmuz", 8: "Ağustos", 9: "Eylül", 10: "Ekim", 11: "Kasım", 12: "Aralık"}
 
-# --- 1. GOOGLE SHEETS BAĞLANTISI ---
-scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
-try:
-    creds = Credentials.from_service_account_info(st.secrets["gcp_service_account"], scopes=scope)
-    client = gspread.authorize(creds)
-    spreadsheet = client.open("portfoyum")
-    ws_portfoy = spreadsheet.worksheet("Veri Sayfası")
-    ws_gelir = spreadsheet.worksheet("Gelirler")
-    ws_gider = spreadsheet.worksheet("Giderler")
-    ws_ayrilan = spreadsheet.worksheet("Gidere Ayrılan Tutar")
-    ws_lotlar = spreadsheet.worksheet("Lotlar")
-except Exception as e:
-    st.error(f"Bağlantı Hatası: {e}"); st.stop()
 
-# --- ANALİZ VE VERİ FONKSİYONLARI ---
 
-def get_tefas_analiz(kod):
-    try:
-        # 1. Sheets'teki 'Lotlar' sayfasını oku
-        data = ws_lotlar.get_all_records()
-        df_sheets = pd.DataFrame(data)
-        
-        # 2. Kod sütununda aradığımız fonu bul (Örn: AFT)
-        satir = df_sheets[df_sheets['Kod'] == kod]
-        
-        if not satir.empty:
-            # 3. Sheets'teki 'GuncelFiyat' sütunundaki değeri al
-            fiyat = satir.iloc[-1]['GuncelFiyat']
-            
-            # Eğer Sheets henüz fiyat çekemediyse veya hata varsa None dön
-            if fiyat == "" or fiyat == "Veri yok" or "Hata" in str(fiyat):
-                return None
-                
-            fiyat_float = float(str(fiyat).replace(",", "."))
-            return pd.DataFrame([{'date': datetime.now(), 'price': fiyat_float}])
-        return None
-    except:
-        return None
-      
-def get_periyodik_getiri(df):
-    if df is None: return {}
-    son_fiyat = df.iloc[-1]['price']
-    periyotlar = {"1 Ay": 30, "3 Ay": 90, "6 Ay": 180, "1 Yıl": 365, "3 Yıl": 1095, "5 Yıl": 1825}
-    getiriler = {}
-    for etiket, gun in periyotlar.items():
-        hedef_tarih = df.iloc[-1]['date'] - timedelta(days=gun)
-        gecmis_df = df[df['date'] <= hedef_tarih]
-        if not gecmis_df.empty:
-            esk_fiyat = gecmis_df.iloc[-1]['price']
-            getiriler[etiket] = ((son_fiyat - esk_fiyat) / esk_fiyat) * 100
-        else:
-            getiriler[etiket] = None
-    return getiriler
+import 'dart:async';
+import 'dart:math';
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
-@st.cache_data(ttl=3600)
-def get_hisse_fiyat(kod):
-    try:
-        tckr = yf.Ticker(f"{kod}.IS")
-        return tckr.fast_info['last_price']
-    except:
-        return None
+void main() => runApp(MaterialApp(
+      home: MainStructure(),
+      debugShowCheckedModeBanner: false,
+      theme: ThemeData(
+        primarySwatch: Colors.indigo,
+        scaffoldBackgroundColor: Colors.white,
+      ),
+    ));
 
-# CSS Düzenlemeleri
-st.markdown("""<style>
-    [data-testid="stMetricValue"] { font-size: 18px !important; }
-    div[data-testid="stMetric"] { background-color: #f8f9fa; padding: 10px; border-radius: 8px; border: 1px solid #eee; }
-    </style>""", unsafe_allow_html=True)
+// --- HAFIZA VE GLOBAL DEĞİŞKENLER ---
+List<Map<String, dynamic>> userTotems = [];
+int userRights = 5;
 
-def get_son_bakiye_ve_limit():
-    try:
-        data = ws_ayrilan.get_all_records()
-        if data:
-            son = data[-1]
-            return float(son.get('Kalan', 0)), float(son.get('Ayrılan Tutar', 0))
-        return 0.0, 0.0
-    except: return 0.0, 0.0
+// --- ANA YAPI (SCAFFOLD VE TAB YÖNETİMİ) ---
+class MainStructure extends StatefulWidget {
+  @override
+  _MainStructureState createState() => _MainStructureState();
+}
 
-# --- SEKMELER ---
-tab_portfoy, tab_gelir, tab_gider, tab_ayrilan, tab_canli = st.tabs(["📊 Portföy", "💵 Gelirler", "💸 Giderler", "🛡️ Bütçe", "🌐 Canlı Veri & TEFAS"])
+class _MainStructureState extends State<MainStructure> with SingleTickerProviderStateMixin {
+  bool isProfileMode = false;
+  late TabController _tabController;
 
-# --- SEKME 1: PORTFÖY ---
-with tab_portfoy:
-    enstruman_bilgi = {'Hisse Senedi': '📈', 'Altın': '🟡', 'Gümüş': '⚪', 'Fon': '🏦', 'Döviz': '💵', 'Kripto': '₿', 'Mevduat': '💰', 'BES': '🛡️'}
-    enstrumanlar = list(enstruman_bilgi.keys())
+  @override
+  void initState() {
+    super.initState();
+    _tabController = TabController(length: 4, vsync: this);
+  }
 
-    with st.sidebar:
-        st.header("📥 Portföy Güncelle")
-        with st.form("p_form", clear_on_submit=True):
-            p_in = {e: st.number_input(f"{enstruman_bilgi[e]} {e}", min_value=0.0, value=None, format="%.f") for e in enstrumanlar}
-            if st.form_submit_button("🚀 Kaydet"):
-                ws_portfoy.append_row([datetime.now().strftime('%Y-%m-%d')] + [p_in[e] or 0 for e in enstrumanlar], value_input_option='RAW')
-                st.rerun()
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        backgroundColor: Colors.white,
+        elevation: 1,
+        leading: Padding(
+          padding: const EdgeInsets.all(8.0),
+          child: GestureDetector(
+            onTap: () => setState(() => isProfileMode = !isProfileMode),
+            child: CircleAvatar(
+              backgroundColor: Colors.indigo,
+              child: Icon(isProfileMode ? Icons.auto_awesome : Icons.person, color: Colors.white),
+            ),
+          ),
+        ),
+        title: Text("TOTEMCİ", style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
+      ),
+      body: isProfileMode 
+          ? ProfileScreen(tabController: _tabController) 
+          : TotemScreen(onOutOfRights: () {
+              setState(() {
+                isProfileMode = true;
+                _tabController.animateTo(3); 
+              });
+            }),
+    );
+  }
+}
 
-    data_p = ws_portfoy.get_all_records()
-    if data_p:
-        df_p = pd.DataFrame(data_p)
-        df_p['tarih'] = pd.to_datetime(df_p['tarih'], errors='coerce')
-        df_p = df_p.dropna(subset=['tarih']).sort_values('tarih')
-        for col in enstrumanlar: df_p[col] = pd.to_numeric(df_p[col], errors='coerce').fillna(0)
-        df_p['Toplam'] = df_p[enstrumanlar].sum(axis=1)
-        
-        guncel = df_p.iloc[-1]
-        toplam_tl = guncel['Toplam']
+// --- TOTEM YAPMA EKRANI (DİNAMİK LİSTE VE ANİMASYONLAR) ---
+class TotemScreen extends StatefulWidget {
+  final VoidCallback onOutOfRights;
+  TotemScreen({required this.onOutOfRights});
 
-        st.metric("Toplam Varlık (TL)", f"{int(toplam_tl):,.0f}".replace(",", "."))
+  @override
+  _TotemScreenState createState() => _TotemScreenState();
+}
 
-        st.write("### ⏱️ Değişim Analizi")
-        periyotlar = {"1 Gün": 1, "1 Ay": 30, "3 Ay": 90, "6 Ay": 180, "1 Yıl": 365}
-        secilen_periyot = st.selectbox("Analiz Periyodu Seçin", list(periyotlar.keys()))
-        
-        gun_farki = periyotlar[secilen_periyot]
-        hedef_tarih = guncel['tarih'] - timedelta(days=gun_farki)
-        
-        gecmis_data = df_p[df_p['tarih'] <= hedef_tarih]
-        if gecmis_data.empty and len(df_p) > 1:
-            gecmis_data = df_p.head(1)
-            st.caption(f"ℹ️ En eski kayıt ({gecmis_data.iloc[0]['tarih'].strftime('%d.%m.%Y')}) baz alındı.")
-        
-        if not gecmis_data.empty and len(df_p) > 1:
-            eski_deger = gecmis_data.iloc[-1]['Toplam']
-            if eski_deger > 0:
-                fark = toplam_tl - eski_deger
-                yuzde = (fark / eski_deger) * 100
-                st.metric(f"{secilen_periyot} Değişimi", f"{int(fark):,.0f} TL".replace(",", "."), f"%{yuzde:.2f}")
+class _TotemScreenState extends State<TotemScreen> with SingleTickerProviderStateMixin {
+  List<String> allTotems = []; 
+  String screenText = "YÜKLENİYOR...";
+  bool isLoading = true;
+  bool isLocked = false;
+  bool isSpinning = false;
+  bool totemFinished = false;
+  int countdown = 5;
+  Timer? timer;
+  
+  late AnimationController _pulseController;
+  late Animation<double> _pulseAnimation;
 
-        st.divider()
-        onceki = df_p.iloc[-2] if len(df_p) > 1 else guncel
-        varlik_data = []
-        for e in enstrumanlar:
-            if guncel[e] > 0:
-                degisim = guncel[e] - onceki[e]
-                yuzde = (degisim / onceki[e] * 100) if onceki[e] > 0 else 0
-                varlik_data.append({'Cins': e, 'Tutar': guncel[e], 'Yüzde': yuzde, 'Icon': enstruman_bilgi[e]})
-        df_v = pd.DataFrame(varlik_data).sort_values(by="Tutar", ascending=False)
-        cols = st.columns(4)
-        for i, (index, row) in enumerate(df_v.iterrows()):
-            with cols[i % 4]:
-                st.metric(f"{row['Icon']} {row['Cins']}", f"{int(row['Tutar']):,.0f}".replace(",", "."), f"%{row['Yüzde']:.2f}")
+  @override
+  void initState() {
+    super.initState();
+    _loadFirebaseSim();
+    _pulseController = AnimationController(vsync: this, duration: Duration(milliseconds: 1200))..repeat(reverse: true);
+    _pulseAnimation = Tween<double>(begin: 0.1, end: 1.0).animate(
+      CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut)
+    );
+  }
 
-        st.divider()
-        sub_tab1, sub_tab2 = st.tabs(["🥧 Varlık Dağılımı", "📈 Gelişim Analizi"])
-        with sub_tab1:
-            df_v['Etiket'] = df_v['Icon'] + " " + df_v['Cins']
-            fig_p = px.pie(df_v, values='Tutar', names='Etiket', hole=0.4, color_discrete_sequence=px.colors.qualitative.Pastel)
-            st.plotly_chart(fig_p, use_container_width=True)
-        with sub_tab2:
-            df_p['tarih_tr'] = df_p['tarih'].dt.day.astype(str) + " " + df_p['tarih'].dt.month.map(TR_AYLAR_TAM)
-            fig_l = px.line(df_p, x='tarih', y='Toplam', markers=True, title="Toplam Varlık Seyri")
-            st.plotly_chart(fig_l, use_container_width=True)
+  // Firebase totemLibrary simülasyonu
+  void _loadFirebaseSim() async {
+    await Future.delayed(Duration(seconds: 1)); 
+    setState(() {
+      allTotems = [
+        "Masaya parmak uçlarınla dokun",
+        "Omuzlarını bir kere silkele",
+        "Telefonu düz bir zemine koy",
+        "Saate bakıp kafanı salla",
+        "Gözlerini kapat ve derin nefes al",
+        "Kendi kendine gülümse"
+      ];
+      isLoading = false;
+      screenText = "TOTEM YAP";
+    });
+  }
 
-# --- SEKME 2: GELİRLER ---
-with tab_gelir:
-    st.subheader("💵 Gelir Yönetimi")
-    with st.form("g_form", clear_on_submit=True):
-        c1, c2, c3 = st.columns(3)
-        m = c1.number_input("Maaş", min_value=0, value=None)
-        p = c2.number_input("Prim & Promosyon", min_value=0, value=None)
-        y = c3.number_input("Yatırımlar", min_value=0, value=None)
-        if st.form_submit_button("Geliri Kaydet"):
-            toplam = (m or 0) + (p or 0) + (y or 0)
-            ws_gelir.append_row([datetime.now().strftime('%Y-%m-%d'), m or 0, p or 0, y or 0, toplam], value_input_option='RAW')
-            st.success("Kaydedildi."); st.rerun()
+  @override
+  void dispose() {
+    _pulseController.dispose();
+    timer?.cancel();
+    super.dispose();
+  }
 
-# --- SEKME 3: GİDERLER ---
-with tab_gider:
-    kalan_bakiye, limit = get_son_bakiye_ve_limit()
-    st.info(f"💰 Güncel Kalan Bütçe: **{int(kalan_bakiye):,.0f}**")
-    gider_ikonlari = {"Genel Giderler": "📦", "Market": "🛒", "Kira": "🏠", "Aidat": "🏢", "Kredi Kartı": "💳", "Kredi": "🏦", "Eğitim": "🎓", "Araba": "🚗", "Seyahat": "✈️", "Sağlık": "🏥", "Çocuk": "👶", "Toplu Taşıma": "🚌"}
-    with st.form("gi_form", clear_on_submit=True):
-        cols = st.columns(3)
-        inputs = {isim: cols[i % 3].number_input(f"{ikon} {isim}", min_value=0, value=None) for i, (isim, ikon) in enumerate(gider_ikonlari.items())}
-        if st.form_submit_button("✅ Harcamayı Kaydet"):
-            toplam_h = sum([v or 0 for v in inputs.values()])
-            if toplam_h > 0:
-                yeni_kalan = kalan_bakiye - toplam_h
-                ws_gider.append_row([datetime.now().strftime('%Y-%m-%d')] + [inputs[k] or 0 for k in gider_ikonlari.keys()], value_input_option='RAW')
-                ws_ayrilan.append_row([datetime.now().strftime('%Y-%m-%d'), limit, yeni_kalan], value_input_option='RAW')
-                st.success(f"Kaydedildi. Kalan: {int(yeni_kalan)}"); st.rerun()
-
-# --- SEKME 4: BÜTÇE ---
-with tab_ayrilan:
-    with st.form("b_form"):
-        yeni_l = st.number_input("Yeni Aylık Limit", min_value=0)
-        if st.form_submit_button("Başlat"):
-            ws_ayrilan.append_row([datetime.now().strftime('%Y-%m-%d'), yeni_l, yeni_l], value_input_option='RAW')
-            st.success("Bütçe güncellendi."); st.rerun()
-
-# --- SEKME 5: CANLI VERİ & TEFAS İÇERİĞİ ---
-with tab_canli:
-    st.subheader("🌐 Canlı Piyasa ve Fon Analizi")
+  void startTotem() {
+    if (userRights <= 0) {
+      widget.onOutOfRights();
+      return;
+    }
+    setState(() { 
+      isLocked = true; 
+      totemFinished = false;
+      countdown = 5;
+    });
     
-    # ... (Yeni Lot Ekleme formu aynı kalsın) ...
+    Timer.periodic(Duration(seconds: 1), (t) {
+      if (countdown > 1) {
+        setState(() => countdown--);
+      } else {
+        t.cancel();
+        startSpinning();
+      }
+    });
+  }
 
-    st.divider()
-    secilen_kod = st.text_input("🔍 Fon Analizi (Örn: GMR, TI3, AFT)", value="AFT").upper()
-    
-    if secilen_kod:
-        with st.spinner("Veriler çekiliyor..."):
-            fon_data = get_tefas_analiz(secilen_kod)
-            
-            if fon_data is not None and not fon_data.empty:
-                # Güncel Fiyatı Büyükçe Gösterelim
-                guncel_fiyat = fon_data.iloc[-1]['price']
-                st.metric(f"{secilen_kod} Güncel Fiyat", f"{guncel_fiyat:,.4f} TL")
-                
-                # Eğer veri sadece 1 satırsa (Mynet'ten gelen durum)
-                if len(fon_data) == 1:
-                    st.info("ℹ️ TEFAS engeli nedeniyle geçmiş veriler ve grafik şu an gösterilemiyor, ancak güncel fiyat başarıyla çekildi.")
-                else:
-                    # Eğer bir şekilde geçmiş veri gelirse (TEFAS çalışırsa) grafiği çiz
-                    getiriler = get_periyodik_getiri(fon_data)
-                    m_cols = st.columns(len(getiriler))
-                    for i, (label, val) in enumerate(getiriler.items()):
-                        with m_cols[i]:
-                            if val is not None:
-                                st.metric(label, f"%{val:.2f}")
-                    
-                    fig_fon = px.line(fon_data, x='date', y='price', title=f"{secilen_kod} Fiyat Seyri")
-                    st.plotly_chart(fig_fon, use_container_width=True)
-            else:
-                st.warning("⚠️ Veri çekilemedi. Mynet veya TEFAS şu an yanıt vermiyor.")
+  void startSpinning() {
+    setState(() { isSpinning = true; });
+    timer = Timer.periodic(Duration(milliseconds: 70), (t) {
+      setState(() { 
+        screenText = allTotems[Random().nextInt(allTotems.length)]; 
+      });
+    });
+  }
+
+  void stopTotem() {
+    if (isSpinning) {
+      timer?.cancel();
+      setState(() {
+        isSpinning = false;
+        isLocked = false;
+        totemFinished = true;
+        userRights--; 
+        userTotems.add({"title": screenText, "status": "Bekliyor"});
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (isLoading) return Center(child: CircularProgressIndicator());
+
+    return GestureDetector(
+      onTap: isSpinning ? stopTotem : null,
+      behavior: HitTestBehavior.opaque,
+      child: Container(
+        width: double.infinity, height: double.infinity, color: Colors.white,
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Text("Kalan Hakkın: $userRights", style: TextStyle(color: Colors.grey, letterSpacing: 1.1)),
+            SizedBox(height: 50),
+            if (isLocked && !isSpinning) ...[
+              FadeTransition(
+                opacity: _pulseAnimation,
+                child: Text("Niyetini tut.", 
+                  style: TextStyle(fontSize: 28, fontWeight: FontWeight.w300, color: Colors.indigo, letterSpacing: 2)),
+              ),
+              SizedBox(height: 30),
+              Text("$countdown", style: TextStyle(fontSize: 90, fontWeight: FontWeight.bold, color: Colors.indigo)),
+            ] else ...[
+              Padding(
+                padding: EdgeInsets.symmetric(horizontal: 40),
+                child: Text(screenText, textAlign: TextAlign.center, 
+                  style: TextStyle(fontSize: 26, fontWeight: FontWeight.bold)),
+              ),
+            ],
+            SizedBox(height: 40),
+            if (!isLocked && !isSpinning && !totemFinished)
+              ElevatedButton(
+                onPressed: startTotem, 
+                child: Text("BAŞLA", style: TextStyle(letterSpacing: 1.5)),
+                style: ElevatedButton.styleFrom(padding: EdgeInsets.symmetric(horizontal: 40, vertical: 15)),
+              ),
+            if (isSpinning) 
+              Text("Durdurmak için EKRANA dokun!", style: TextStyle(color: Colors.orange, fontWeight: FontWeight.bold)),
+            if (totemFinished) ...[
+              Text("Profilinden sonucu girebilirsin.", style: TextStyle(color: Colors.grey)),
+              SizedBox(height: 20),
+              ElevatedButton(
+                onPressed: () => setState(() { totemFinished = false; screenText = "TOTEM YAP"; }),
+                child: Text("YENİ TOTEM YAP"),
+                style: ElevatedButton.styleFrom(backgroundColor: Colors.green, foregroundColor: Colors.white),
+              ),
+            ]
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// --- PROFİL, ANALİZ VE ÖNERİ EKRANI ---
+class ProfileScreen extends StatefulWidget {
+  final TabController tabController;
+  ProfileScreen({required this.tabController});
+  @override
+  _ProfileScreenState createState() => _ProfileScreenState();
+}
+
+class _ProfileScreenState extends State<ProfileScreen> {
+  final TextEditingController _totemController = TextEditingController();
+  final TextEditingController _rateController = TextEditingController();
+  bool _isButtonEnabled = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _totemController.addListener(_validateFields);
+    _rateController.addListener(_validateFields);
+  }
+
+  void _validateFields() {
+    setState(() {
+      _isButtonEnabled = _totemController.text.length >= 15 && 
+                         _totemController.text.length <= 300 && 
+                         _rateController.text.isNotEmpty;
+    });
+  }
+
+  @override
+  void dispose() {
+    _totemController.dispose();
+    _rateController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    int total = userTotems.length;
+    int success = userTotems.where((t) => t["status"] == "Tuttu").length;
+    int failed = userTotems.where((t) => t["status"] == "Tutmadı").length;
+    double rate = (success + failed) == 0 ? 0 : (success / (success + failed));
+
+    return Column(
+      children: [
+        TabBar(
+          controller: widget.tabController,
+          isScrollable: true, labelColor: Colors.indigo,
+          tabs: [Tab(text: "Totemlerim"), Tab(text: "Analiz"), Tab(text: "Totem Öner"), Tab(text: "Satın Al")],
+        ),
+        Expanded(
+          child: TabBarView(
+            controller: widget.tabController,
+            children: [
+              // 1. Totemlerim Listesi
+              userTotems.isEmpty 
+              ? Center(child: Text("Henüz totem yapmadın."))
+              : ListView.builder(
+                itemCount: userTotems.length,
+                itemBuilder: (c, i) => Card(
+                  margin: EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                  child: ListTile(
+                    title: Text(userTotems[i]["title"]),
+                    trailing: userTotems[i]["status"] == "Bekliyor" 
+                      ? Row(mainAxisSize: MainAxisSize.min, children: [
+                          IconButton(icon: Icon(Icons.check_circle, color: Colors.green), onPressed: () => setState(() => userTotems[i]["status"] = "Tuttu")),
+                          IconButton(icon: Icon(Icons.cancel, color: Colors.red), onPressed: () => setState(() => userTotems[i]["status"] = "Tutmadı")),
+                        ]) : Icon(userTotems[i]["status"] == "Tuttu" ? Icons.check_circle : Icons.cancel, color: Colors.grey),
+                  ),
+                ),
+              ),
+              // 2. Analiz (Dairesel Grafik)
+              Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+                Stack(alignment: Alignment.center, children: [
+                  SizedBox(width: 150, height: 150, child: CircularProgressIndicator(value: rate, strokeWidth: 12, color: Colors.green, backgroundColor: Colors.red[50])),
+                  Text("%${(rate * 100).toInt()}", style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold)),
+                ]),
+                SizedBox(height: 20),
+                Text("Toplam $total Totem Tamamlandı", style: TextStyle(color: Colors.grey)),
+              ]),
+              // 3. Totem Öner (Dinamik Yeşil Buton)
+              Padding(
+                padding: EdgeInsets.all(20),
+                child: SingleChildScrollView(
+                  child: Column(children: [
+                    TextField(
+                      controller: _totemController,
+                      maxLength: 300,
+                      maxLines: 3,
+                      decoration: InputDecoration(labelText: "Totem Öneriniz", border: OutlineInputBorder(), helperText: "Min 15, Max 300 karakter"),
+                    ),
+                    SizedBox(height: 20),
+                    TextField(
+                      controller: _rateController,
+                      keyboardType: TextInputType.number,
+                      inputFormatters: [FilteringTextInputFormatter.digitsOnly, _MaxPercentFormatter()],
+                      decoration: InputDecoration(labelText: "Başarı Oranı", prefixText: "%", border: OutlineInputBorder()),
+                    ),
+                    SizedBox(height: 30),
+                    ElevatedButton(
+                      onPressed: _isButtonEnabled ? () {
+                        ScaffoldMessenger.of(context).showSnackBar(SnackBar(backgroundColor: Colors.green, content: Text("Öneriniz gönderildi!")));
+                        _totemController.clear(); _rateController.clear();
+                        FocusScope.of(context).unfocus();
+                      } : null,
+                      child: Text("GÖNDER", style: TextStyle(fontWeight: FontWeight.bold)),
+                      style: ElevatedButton.styleFrom(
+                        padding: EdgeInsets.symmetric(horizontal: 60, vertical: 15),
+                        backgroundColor: _isButtonEnabled ? Colors.green : Colors.grey[300],
+                        foregroundColor: Colors.white,
+                      ),
+                    ),
+                  ]),
+                ),
+              ),
+              // 4. Satın Al
+              Center(child: Text("Sınırsız Paket: 99.90 TL", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold))),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+// Yüzde Kısıtlayıcı
+class _MaxPercentFormatter extends TextInputFormatter {
+  @override
+  TextEditingValue formatEditUpdate(TextEditingValue oldValue, TextEditingValue newValue) {
+    if (newValue.text.isEmpty) return newValue;
+    int? value = int.tryParse(newValue.text);
+    if (value == null) return oldValue;
+    if (value > 100) return TextEditingValue(text: '100', selection: TextSelection.collapsed(offset: 3));
+    return newValue;
+  }
+}
