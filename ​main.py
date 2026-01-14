@@ -4,7 +4,7 @@ from google.oauth2.service_account import Credentials
 import pandas as pd
 from datetime import datetime, timedelta
 import plotly.express as px
-import google.generativeai as genai
+import openai
 
 # --- SAYFA AYARLARI ---
 st.set_page_config(page_title="Finansal Takip", layout="wide")
@@ -28,12 +28,6 @@ try:
     ws_ai_kaynak = spreadsheet.worksheet("AI") # Makalelerin olduğu sayfa
 except Exception as e:
     st.error(f"Bağlantı Hatası: {e}"); st.stop()
-
-# --- GEMINI AI YAPILANDIRMASI ---
-if "GEMINI_API_KEY" in st.secrets:
-    genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
-else:
-    st.warning("⚠️ GEMINI_API_KEY bulunamadı.")
 
 # --- CSS Düzenlemeleri ---
 st.markdown("""
@@ -156,46 +150,36 @@ with tab_ayrilan:
             ws_ayrilan.append_row([datetime.now().strftime('%Y-%m-%d'), yeni_l, yeni_l], value_input_option='RAW')
             st.success("Bütçe güncellendi."); st.rerun()
 
-# --- SEKME 5: AI ANALİST ---
+# --- SEKME 5: AI ANALİST (ChatGPT Versiyonu) ---
 with tab_ai:
-    st.header("🤖 AI Stratejik Danışman")
+    st.header("🤖 ChatGPT Stratejik Danışman")
+    
     if st.button("📊 Verileri ve Makaleleri Analiz Et"):
-        try:
-            # AI Sayfasındaki makale/notları çek
-            notlar_list = ws_ai_kaynak.col_values(1)[1:]
-            egitim_notlari = " ".join([str(n) for n in notlar_list if n])
-            
-            # --- MODEL İSMİNİ GEMINI-PRO OLARAK GÜNCELLEDİK ---
-            # gemini-pro, v1beta ve standart v1 sürümlerinde en stabil çalışan modeldir.
-            model = genai.GenerativeModel(model_name='gemini-pro')
-            
-            # Veri Özetini Hazırla
-            varlik_ozeti = ", ".join([f"{e}: {int(guncel.get(e,0))} TL" for e in enstrumanlar if guncel.get(e,0) > 0])
-            
-            # Talimat ve veriyi tek bir metin (Prompt) olarak birleştiriyoruz
-            prompt = f"""
-            Sen Düzey 3 uzman bir finans danışmanısın. 
-            Aşağıdaki makale notlarını ve kullanıcı verilerini analiz et:
-            
-            KAYNAK NOTLAR: {egitim_notlari}
-            
-            KULLANICI PORTFÖYÜ: {varlik_ozeti}
-            TOPLAM VARLIK: {int(guncel['Toplam'])} TL
-            KALAN BÜTÇE: {int(kalan_bakiye)} TL
-            
-            Lütfen bu verilere dayanarak kısa ve öz bir stratejik analiz yap.
-            """
-            
-            with st.spinner("Yapay zeka analiz raporunu hazırlıyor..."):
-                # generate_content çağrısını yapıyoruz
-                response = model.generate_content(prompt)
+        if "OPENAI_API_KEY" not in st.secrets:
+            st.error("Lütfen Secrets kısmına OPENAI_API_KEY ekleyin.")
+        else:
+            try:
+                # 1. Sheets'ten verileri çek
+                notlar_list = ws_ai_kaynak.col_values(1)[1:]
+                egitim_notlari = " ".join([str(n) for n in notlar_list if n])
                 
-                if response.text:
-                    st.markdown("### 📝 Stratejik Analiz Raporu")
-                    st.info(response.text)
-                else:
-                    st.warning("Yapay zeka bir yanıt üretemedi, lütfen tekrar deneyin.")
+                # 2. Portföy özetini hazırla
+                varlik_ozeti = ", ".join([f"{e}: {int(guncel.get(e,0))} TL" for e in enstrumanlar if guncel.get(e,0) > 0])
+                
+                # 3. OpenAI Bağlantısı
+                client = openai.OpenAI(api_key=st.secrets["OPENAI_API_KEY"])
+                
+                with st.spinner("ChatGPT analiz yapıyor..."):
+                    response = client.chat.completions.create(
+                        model="gpt-3.5-turbo", # Veya "gpt-4"
+                        messages=[
+                            {"role": "system", "content": f"Sen uzman bir finansçısın. Şu kaynak notlara göre analiz yap: {egitim_notlari}"},
+                            {"role": "user", "content": f"Varlıklarım: {varlik_ozeti}. Toplam: {int(guncel['Toplam'])} TL. Bütçe: {int(kalan_bakiye)} TL. Stratejik yorum yap."}
+                        ]
+                    )
                     
-        except Exception as e:
-            st.error(f"Bağlantı Hatası: {e}")
-            st.info("İpucu: Eğer hala 404 alıyorsanız, API anahtarınızın Google AI Studio'da aktif olduğundan emin olun.")
+                    st.markdown("### 📝 ChatGPT Analiz Raporu")
+                    st.info(response.choices[0].message.content)
+                    
+            except Exception as e:
+                st.error(f"ChatGPT Hatası: {e}")
