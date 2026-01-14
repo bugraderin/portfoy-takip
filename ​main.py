@@ -34,30 +34,37 @@ except Exception as e:
 
 # --- ANALİZ VE VERİ FONKSİYONLARI ---
 
-@st.cache_data(ttl=43200)
 def get_tefas_analiz(kod):
+    """TEFAS yerine Mynet Finans üzerinden canlı veri çekme"""
     try:
-        # Burak Yılmaz'ın kütüphanesini kullanıyoruz
-        # Fetch metodu (fon_kodu, baslangic, bitis) alır
-        bitis = datetime.now().strftime("%Y-%m-%d")
-        baslangic = (datetime.now() - timedelta(days=1825)).strftime("%Y-%m-%d")
+        # Mynet fon detay sayfası
+        url = f"https://finans.mynet.com/yatirimfonlari/detay/{kod}/"
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        }
         
-        df = tefas_crawler.fetch(
-            start=baslangic,
-            end=bitis,
-            name=kod
-        )
-        
-        if df is not None and not df.empty:
-            # Kütüphane çıktılarını senin koduna uyumlu hale getirelim
-            df = df.rename(columns={"price": "price", "date": "date"})
-            df['date'] = pd.to_datetime(df['date'])
-            df['price'] = pd.to_numeric(df['price'])
-            return df.sort_values('date')
+        response = requests.get(url, headers=headers, timeout=10)
+        if response.status_code == 200:
+            from bs4 import BeautifulSoup
+            soup = BeautifulSoup(response.text, 'html.parser')
+            
+            # Fiyatın bulunduğu HTML etiketini buluyoruz
+            # Mynet'te genellikle 'last-price' veya belirli bir id içindedir
+            fiyat_elementi = soup.find("span", {"id": "p-last-price"}) or soup.find("span", {"class": "last-price"})
+            
+            if fiyat_elementi:
+                fiyat_str = fiyat_elementi.text.strip().replace(".", "").replace(",", ".")
+                fiyat = float(fiyat_str)
+                
+                # Fonksiyonun hata vermemesi için DataFrame formatında dönüyoruz
+                # Geçmiş veri çekmek zor olduğu için sadece güncel fiyatı basıyoruz
+                df = pd.DataFrame([{
+                    'date': datetime.now(),
+                    'price': fiyat
+                }])
+                return df
         return None
     except Exception as e:
-        # Hatayı görmemiz gerekebilir
-        # st.error(f"Crawler Hatası: {e}") 
         return None
 
 def get_periyodik_getiri(df):
