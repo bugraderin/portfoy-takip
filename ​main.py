@@ -52,10 +52,29 @@ with tab_portfoy:
 
     with st.sidebar:
         st.header("📥 Portföy Güncelle")
+        
+        # Mevcut en son verileri bir sözlükte tutalım (Varsayılan: 0.0)
+        son_veriler = {e: 0.0 for e in enstrumanlar}
+        if not df_p.empty:
+            son_kayit = df_p.iloc[-1]
+            son_veriler = {e: float(son_kayit[e]) for e in enstrumanlar}
+
         with st.form("p_form", clear_on_submit=True):
-            p_in = {e: st.number_input(f"{enstruman_bilgi[e]} {e}", min_value=0.0, value=None, format="%.f") for e in enstrumanlar}
+            p_in = {}
+            for e in enstrumanlar:
+                # Value kısmına son_veriler[e] yazarsak kutucuklar son değerle dolu gelir
+                # Eğer kutucukların boş kalmasını ama arkada eski verinin korunmasını istersen value=None kalabilir
+                p_in[e] = st.number_input(f"{enstruman_bilgi[e]} {e}", min_value=0.0, value=None, format="%.f", help=f"Son değer: {son_veriler[e]:,.0f}")
+            
             if st.form_submit_button("🚀 Kaydet"):
-                ws_portfoy.append_row([datetime.now().strftime('%Y-%m-%d')] + [p_in[e] or 0 for e in enstrumanlar], value_input_option='RAW')
+                yeni_satir = [datetime.now().strftime('%Y-%m-%d')]
+                for e in enstrumanlar:
+                    # EĞER input boşsa (None), son_veriler'deki değeri al, değilse inputu al
+                    deger = p_in[e] if p_in[e] is not None else son_veriler[e]
+                    yeni_satir.append(deger)
+                
+                ws_portfoy.append_row(yeni_satir, value_input_option='RAW')
+                st.success("Portföy güncellendi (Boş bırakılanlar korundu).")
                 st.rerun()
 
     data_p = ws_portfoy.get_all_records()
