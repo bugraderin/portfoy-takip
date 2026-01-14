@@ -5,6 +5,8 @@ import pandas as pd
 from datetime import datetime, timedelta
 import plotly.express as px
 import google.generativeai as genai
+import requests
+import json
 
 # --- SAYFA AYARLARI ---
 st.set_page_config(page_title="Finansal Takip", layout="wide")
@@ -164,45 +166,52 @@ with tab_ai:
             st.error("Secrets kısmında GEMINI_API_KEY bulunamadı.")
         else:
             try:
-                # 1. Google AI Yapılandırması
-                genai.configure(api_key=api_key)
-                
-                # 2. Makale ve Notları Çek (AI'nın öğrenmesi gereken kaynaklar)
+                # 1. Makale ve Notları Çek (Öğrenme Kaynağı)
                 raw_notlar = ws_ai_kaynak.col_values(1)[1:]
                 egitim_notlari = " ".join([str(n) for n in raw_notlar if n])
                 
-                # 3. Model Tanımlama (Öğrenme burada gerçekleşiyor)
-                # Not: 'system_instruction' hata verirse kütüphane sürümün eskidir.
-                model = genai.GenerativeModel(
-                    model_name='gemini-1.5-flash',
-                    system_instruction=f"Sen Düzey 3 uzman bir finans danışmanısın. Kullanıcının sunduğu şu makaleler senin temel doktrinindir: {egitim_notlari}"
-                )
-                
-                # 4. Verileri Hazırla (Değişken hataları düzeltildi)
+                # 2. Finansal Verileri Hazırla
                 guncel_toplam = df_p.iloc[-1]['Toplam'] if not df_p.empty else 0
                 varlik_detay = ", ".join([f"{e}: {int(guncel.get(e,0))} TL" for e in enstrumanlar if guncel.get(e,0) > 0])
                 kalan_butce, limit = get_son_bakiye_ve_limit()
                 
-                prompt = f"""
-                Aşağıdaki güncel finansal verilerimi, sana öğrettiğim makalelerdeki stratejilere göre analiz et:
+                # 3. Öğretici Prompt (System Instruction'ı manuel olarak en tepeye ekliyoruz)
+                # Bu yöntem kütüphane sürümü ne olursa olsun AI'nın 'öğrenmesini' sağlar.
+                full_prompt = f"""
+                SİSTEM TALİMATI: Sen Düzey 3 uzman bir finans danışmanısın. 
+                Sana verilen şu makaleler senin temel strateji rehberindir: {egitim_notlari}
                 
-                Varlık Dağılımı: {varlik_detay}
-                Toplam Portföy Değeri: {int(guncel_toplam)} TL
-                Bütçe Durumu: {int(kalan_butce)} TL kalan (Aylık Limit: {int(limit)} TL)
+                KULLANICI VERİLERİ:
+                Varlıklar: {varlik_detay}
+                Toplam Portföy: {int(guncel_toplam)} TL
+                Bütçe: {int(kalan_butce)} TL kalan (Aylık Limit: {int(limit)} TL)
                 
-                Stratejik yorumlarını ve makalelere dayalı önerilerini bekliyorum.
+                ANALİZ TALEBİ: Yukarıdaki verileri, sana öğrettiğim strateji rehberine göre analiz et ve 3 madde halinde tavsiye ver.
                 """
                 
-                with st.spinner("Gemini makalelerini hatırlıyor ve analiz ediyor..."):
-                    response = model.generate_content(prompt)
+                # 4. Doğrudan API Bağlantısı (Kütüphaneyi ve 404 hatalarını baypas eder)
+                # v1beta yerine v1 kullanarak en stabil endpoint'e bağlanıyoruz
+                url = f"https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key={api_key}"
+                headers = {'Content-Type': 'application/json'}
+                payload = {
+                    "contents": [{
+                        "parts": [{"text": full_prompt}]
+                    }]
+                }
+                
+                with st.spinner("Gemini makalelerini ve portföyünü analiz ediyor..."):
+                    response = requests.post(url, headers=headers, json=payload)
+                    res_json = response.json()
                     
-                    if response.text:
+                    if response.status_code == 200:
+                        # Yanıtı al ve göster
+                        ai_yaniti = res_json['candidates'][0]['content']['parts'][0]['text']
                         st.markdown("### 📝 AI Stratejik Raporu")
-                        st.info(response.text)
+                        st.info(ai_yaniti)
                     else:
-                        st.warning("AI yanıt üretti ancak içerik boş.")
+                        # Hata mesajını detaylı göster ki nedenini anlayalım
+                        hata_mesaji = res_json.get('error', {}).get('message', 'Bilinmeyen API Hatası')
+                        st.error(f"Google API Hatası: {hata_mesaji}")
                         
             except Exception as e:
-                # Eğer sürüm hatası alırsan (System Instruction hatası) mesajı buraya düşer
-                st.error(f"Google AI Hatası: {e}")
-                st.info("İpucu: Eğer 'unexpected keyword system_instruction' hatası alırsanız, bu kütüphane sürümünüzün (google-generativeai) 0.7.2'den eski olduğunu gösterir.")
+                st.error(f"Sistem Hatası: {e}")
