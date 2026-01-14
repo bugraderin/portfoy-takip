@@ -6,6 +6,8 @@ from google.oauth2.service_account import Credentials
 import pandas as pd
 from datetime import datetime, timedelta
 import plotly.express as px
+from tefas import Crawler
+tefas_crawler = Crawler()
 
 # --- SAYFA AYARLARI ---
 st.set_page_config(page_title="Finansal Takip", layout="wide")
@@ -32,28 +34,30 @@ except Exception as e:
 
 # --- ANALİZ VE VERİ FONKSİYONLARI ---
 
+@st.cache_data(ttl=43200)
 def get_tefas_analiz(kod):
     try:
-        # Mynet Finans üzerinden fonun sayfasına gidiyoruz
-        url = f"https://finans.mynet.com/yatirimfonlari/detay/{kod}/"
-        headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
+        # Burak Yılmaz'ın kütüphanesini kullanıyoruz
+        # Fetch metodu (fon_kodu, baslangic, bitis) alır
+        bitis = datetime.now().strftime("%Y-%m-%d")
+        baslangic = (datetime.now() - timedelta(days=1825)).strftime("%Y-%m-%d")
         
-        res = requests.get(url, headers=headers, timeout=10)
-        if res.status_code != 200:
-            return None
-            
-        from bs4 import BeautifulSoup
-        soup = BeautifulSoup(res.text, 'html.parser')
+        df = tefas_crawler.fetch(
+            start=baslangic,
+            end=bitis,
+            name=kod
+        )
         
-        # Sayfadaki güncel fiyatı bul (Mynet'teki CSS sınıfına göre)
-        fiyat_text = soup.find("span", {"class": "last-price"}).text
-        fiyat = float(fiyat_text.replace(".", "").replace(",", "."))
-        
-        # Geçmiş veriyi çekmek Mynet'te zordur, bu yüzden şimdilik 
-        # sadece güncel fiyatı ve bugünün tarihini içeren bir tablo dönelim
-        df = pd.DataFrame([{"date": datetime.now(), "price": fiyat}])
-        return df
-    except:
+        if df is not None and not df.empty:
+            # Kütüphane çıktılarını senin koduna uyumlu hale getirelim
+            df = df.rename(columns={"price": "price", "date": "date"})
+            df['date'] = pd.to_datetime(df['date'])
+            df['price'] = pd.to_numeric(df['price'])
+            return df.sort_values('date')
+        return None
+    except Exception as e:
+        # Hatayı görmemiz gerekebilir
+        # st.error(f"Crawler Hatası: {e}") 
         return None
 
 def get_periyodik_getiri(df):
