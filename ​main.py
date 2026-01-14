@@ -27,32 +27,27 @@ try:
 except Exception as e:
     st.error(f"Bağlantı Hatası: {e}"); st.stop()
 
-# CSS Düzenlemeleri
+# --- CSS Düzenlemeleri ---
 st.markdown("""
 <style>
     /* Metrik fontları */
     [data-testid="stMetricValue"] { font-size: 18px !important; }
     div[data-testid="stMetric"] { background-color: #f8f9fa; padding: 10px; border-radius: 8px; border: 1px solid #eee; }
     
-    /* Chrome, Safari, Edge ve Opera için okları kaldırır */
+    /* Input oklarını ve Streamlit butonlarını gizler (Kutuyu kapatmaz) */
     input::-webkit-outer-spin-button,
     input::-webkit-inner-spin-button {
         -webkit-appearance: none;
         margin: 0;
     }
-
-    /* Firefox için okları kaldırır */
     input[type=number] {
         -moz-appearance: textfield;
     }
-
-    /* Streamlit artı-eksi butonlarını gizler */
     [data-testid="stNumberInputStepUp"], [data-testid="stNumberInputStepDown"] {
         display: none !important;
     }
 </style>
 """, unsafe_allow_html=True)
-
 
 def get_son_bakiye_ve_limit():
     try:
@@ -102,10 +97,8 @@ with tab_portfoy:
             if st.form_submit_button("🚀 Kaydet"):
                 yeni_satir = [datetime.now().strftime('%Y-%m-%d')]
                 for e in enstrumanlar:
-                    if p_in[e] is not None:
-                        yeni_satir.append(p_in[e])
-                    else:
-                        yeni_satir.append(float(son_kayitlar.get(e, 0)))
+                    val = p_in[e] if p_in[e] is not None else float(son_kayitlar.get(e, 0))
+                    yeni_satir.append(val)
                 
                 bugun = datetime.now().strftime('%Y-%m-%d')
                 tarihler = ws_portfoy.col_values(1)
@@ -140,41 +133,40 @@ with tab_portfoy:
         gun_farki = periyotlar[secilen_periyot]
         hedef_tarih = guncel['tarih'] - timedelta(days=gun_farki)
         
-        gecmis_data = df_p[df_p['tarih'] <= hedef_tarih]
-        if gecmis_data.empty and len(df_p) > 1:
-            gecmis_data = df_p.head(1)
-            st.caption(f"ℹ️ En eski kayıt ({gecmis_data.iloc[0]['tarih'].strftime('%d.%m.%Y')}) baz alındı.")
-        
+        # --- HİBRİT ANALİZ BLOĞU ---
         if not df_p.empty and len(df_p) > 1:
-            # 1. Mevcut değeri al
             guncel_deger = guncel['Toplam']
             
-            # 2. Seçilen periyottaki tüm verileri filtrele
-            mask = (df_p['tarih'] > hedef_tarih) & (df_p['tarih'] <= guncel['tarih'])
-            periyot_verileri = df_p.loc[mask]
-            
-            if not periyot_verileri.empty:
-                # 3. Periyodun ortalamasını hesapla
-                periyot_ortalamasi = periyot_verileri['Toplam'].mean()
+            if secilen_periyot == "1 Gün":
+                # Düne göre net fark
+                onceki_deger = df_p.iloc[-2]['Toplam']
+                fark = guncel_deger - onceki_deger
+                yuzde_deg = (fark / onceki_deger) * 100 if onceki_deger > 0 else 0
+                label_text = "Düne Göre Değişim"
+            else:
+                # Periyodun ortalamasına göre fark
+                mask = (df_p['tarih'] > hedef_tarih) & (df_p['tarih'] <= guncel['tarih'])
+                periyot_verileri = df_p.loc[mask]
                 
-                # 4. Mevcut değerin ortalamadan farkını ve yüzdesini bul
-                fark = guncel_deger - periyot_ortalamasi
-                yuzde_deg = (fark / periyot_ortalamasi) * 100 if periyot_ortalamasi > 0 else 0
-                
-                # Ekrana basma (Metric ismi değişti)
-                st.metric(
-                    f"{secilen_periyot} Ortalamasına Göre", 
-                    f"{int(fark):,.0f} TL".replace(",", "."), 
-                    f"%{yuzde_deg:.2f}"
-                )
+                if not periyot_verileri.empty:
+                    periyot_ortalamasi = periyot_verileri['Toplam'].mean()
+                    fark = guncel_deger - periyot_ortalamasi
+                    yuzde_deg = (fark / periyot_ortalamasi) * 100 if periyot_ortalamasi > 0 else 0
+                    label_text = f"{secilen_periyot} Ortalamasına Göre"
+                else:
+                    fark, yuzde_deg, label_text = 0, 0, "Veri Yetersiz"
+
+            st.metric(label_text, f"{int(fark):,.0f} TL".replace(",", "."), f"%{yuzde_deg:.2f}")
+            if secilen_periyot != "1 Gün":
                 st.caption(f"ℹ️ Bugün, son {secilen_periyot} içindeki genel varlık ortalamanızdan ne kadar saptığınızı görüyorsunuz.")
         else:
             st.info("Kıyaslama yapabilmek için en az 2 farklı günlük kayıt gereklidir.")
 
         st.divider()
-        # --- Enstrüman Metrikleri Bölümü ---
+        # --- Enstrüman Metrikleri ---
         onceki = df_p.iloc[-2] if len(df_p) > 1 else guncel
-        varlik_data = []
+        varlik_data = [] # Liste sıfırlama (İkizlenme engellendi)
+        
         for e in enstrumanlar:
             if guncel[e] > 0:
                 degisim = guncel[e] - onceki[e]
