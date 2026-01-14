@@ -167,7 +167,7 @@ with tab_ai:
             
             # Model Yapılandırması
             model = genai.GenerativeModel(
-                model_name='models/gemini-1.5-flash',
+                model_name='gemini-1.5-flash', # Başına 'models/' koymadan dene
                 system_instruction=f"Sen Düzey 3 uzmanısın. Şu notlara göre analiz yap: {egitim_notlari}"
             )
             
