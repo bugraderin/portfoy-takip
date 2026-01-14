@@ -156,27 +156,40 @@ with tab_ayrilan:
             ws_ayrilan.append_row([datetime.now().strftime('%Y-%m-%d'), yeni_l, yeni_l], value_input_option='RAW')
             st.success("Bütçe güncellendi."); st.rerun()
 
-# --- SEKME 5: AI ANALİST (YENİ) ---
+# --- SEKME 5: AI ANALİST ---
 with tab_ai:
     st.header("🤖 AI Stratejik Danışman")
     if st.button("📊 Verileri ve Makaleleri Analiz Et"):
         try:
-            # AI Sayfasındaki notları çek
+            # Sheets'ten makale notlarını çek
             notlar_list = ws_ai_kaynak.col_values(1)[1:]
             egitim_notlari = " ".join([str(n) for n in notlar_list if n])
             
-            # Model Yapılandırması
-            model = genai.GenerativeModel(
-    model_name='gemini-pro', # Bunu 'gemini-pro' yapıyoruz
-    system_instruction=f"Sen Düzey 3 uzmanısın. Notların: {egitim_notlari}"
-)
+            # Modeli en sade haliyle tanımlıyoruz
+            model = genai.GenerativeModel(model_name='gemini-1.5-flash')
             
-            # Veri Özeti
+            # Veri Özetini Hazırla
             varlik_ozeti = ", ".join([f"{e}: {int(guncel.get(e,0))} TL" for e in enstrumanlar if guncel.get(e,0) > 0])
-            prompt = f"Varlıklar: {varlik_ozeti}. Toplam: {int(guncel['Toplam'])} TL. Kalan Bütçe: {int(kalan_bakiye)} TL. Stratejik yorum yap."
+            
+            # Talimatları (System Instruction) doğrudan promptun içine ekliyoruz
+            prompt = f"""
+            TALİMAT: Sen Düzey 3 uzman bir finans danışmanısın. 
+            Aşağıdaki makale notlarını temel alarak kullanıcıya stratejik analiz yap:
+            ---
+            MAKALE NOTLARI: {egitim_notlari}
+            ---
+            KULLANICI VERİLERİ:
+            Varlıklar: {varlik_ozeti}
+            Toplam Portföy: {int(guncel['Toplam'])} TL
+            Kalan Bütçe: {int(kalan_bakiye)} TL
+            
+            Analizini 3 kısa ve öz madde halinde sun.
+            """
             
             with st.spinner("Analiz ediliyor..."):
                 response = model.generate_content(prompt)
+                st.markdown("### 📝 Stratejik Analiz Raporu")
                 st.info(response.text)
+                
         except Exception as e:
             st.error(f"Hata: {e}")
