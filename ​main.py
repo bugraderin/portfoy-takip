@@ -155,7 +155,16 @@ with tab_portfoy:
         for e in enstrumanlar:
             if guncel[e] > 0:
                 degisim = guncel[e] - onceki[e]
-                yuzde = (degisim / onceki[e] * 100) if onceki[e] > 0 else 0
+
+              # Değişim Yüzdesi #
+                if onceki[e] > 0:
+                          yuzde = (degisim / onceki[e]) * 100
+                  elif onceki[e] == 0 and guncel[e] > 0:
+                    yuzde = 100.0  # İlk kez alım yapıldığında %100 gösterir
+                                    else:
+                              yuzde = 0.0
+              # Değişim Yüzdesi #
+      
                 varlik_data.append({'Cins': e, 'Tutar': guncel[e], 'Yüzde': yuzde, 'Icon': enstruman_bilgi[e]})
         df_v = pd.DataFrame(varlik_data).sort_values(by="Tutar", ascending=False)
         cols = st.columns(4)
