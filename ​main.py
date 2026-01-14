@@ -166,7 +166,7 @@ with tab_ai:
             egitim_notlari = " ".join([str(n) for n in notlar_list if n])
             
             # Model Yapılandırması
-model = genai.GenerativeModel(
+            model = genai.GenerativeModel(
     model_name='gemini-1.5-flash', # Başına 'models/' koymadan, en güncel haliyle
     system_instruction=f"Sen Düzey 3 uzmanısın. Notların: {egitim_notlari}"
 )
