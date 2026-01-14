@@ -35,38 +35,30 @@ except Exception as e:
 # --- ANALİZ VE VERİ FONKSİYONLARI ---
 
 def get_tefas_analiz(kod):
-    """TEFAS yerine Mynet Finans üzerinden canlı veri çekme"""
+    def get_tefas_analiz(kod):
     try:
-        # Mynet fon detay sayfası
-        url = f"https://finans.mynet.com/yatirimfonlari/detay/{kod}/"
-        headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-        }
+        # 1. Sheets'teki 'Lotlar' sayfasından tüm veriyi çek
+        data = ws_lotlar.get_all_records()
+        df_sheets = pd.DataFrame(data)
         
-        response = requests.get(url, headers=headers, timeout=10)
-        if response.status_code == 200:
-            from bs4 import BeautifulSoup
-            soup = BeautifulSoup(response.text, 'html.parser')
+        # 2. 'Kod' sütununda senin aradığın fonu (örn: AFT) bul
+        # Sütun isminin Sheets'te tam olarak "Kod" olduğundan emin ol
+        satir = df_sheets[df_sheets['Kod'] == kod]
+        
+        if not satir.empty:
+            # 3. O satırdaki 'GuncelFiyat' hücresini oku
+            fiyat = satir.iloc[-1]['GuncelFiyat']
             
-            # Fiyatın bulunduğu HTML etiketini buluyoruz
-            # Mynet'te genellikle 'last-price' veya belirli bir id içindedir
-            fiyat_elementi = soup.find("span", {"id": "p-last-price"}) or soup.find("span", {"class": "last-price"})
+            # Veri temizleme (Hata payına karşı)
+            fiyat_str = str(fiyat).replace(",", ".")
+            return pd.DataFrame([{'date': datetime.now(), 'price': float(fiyat_str)}])
             
-            if fiyat_elementi:
-                fiyat_str = fiyat_elementi.text.strip().replace(".", "").replace(",", ".")
-                fiyat = float(fiyat_str)
-                
-                # Fonksiyonun hata vermemesi için DataFrame formatında dönüyoruz
-                # Geçmiş veri çekmek zor olduğu için sadece güncel fiyatı basıyoruz
-                df = pd.DataFrame([{
-                    'date': datetime.now(),
-                    'price': fiyat
-                }])
-                return df
         return None
     except Exception as e:
+        # Hata olursa Streamlit ekranında geçici bir uyarı gösterir (opsiyonel)
+        # st.error(f"Hata: {e}") 
         return None
-
+      
 def get_periyodik_getiri(df):
     if df is None: return {}
     son_fiyat = df.iloc[-1]['price']
