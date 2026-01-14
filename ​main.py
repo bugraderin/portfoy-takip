@@ -163,27 +163,43 @@ with tab_portfoy:
             st.info("Kıyaslama yapabilmek için en az 2 farklı günlük kayıt gereklidir.")
 
         st.divider()
-        # --- Enstrüman Metrikleri ---
+        # --- ENSTRÜMAN METRİKLERİ BÖLÜMÜ (GÜNCELLENDİ) ---
         onceki = df_p.iloc[-2] if len(df_p) > 1 else guncel
-        varlik_data = [] # Liste sıfırlama (İkizlenme engellendi)
+        varlik_data = [] 
         
         for e in enstrumanlar:
             if guncel[e] > 0:
-                degisim = guncel[e] - onceki[e]
-                if onceki[e] > 0:
-                    yuzde = (degisim / onceki[e]) * 100
-                elif onceki[e] == 0 and guncel[e] > 0:
-                    yuzde = 100.0
-                else:
-                    yuzde = 0.0
+                # Sayısal değerleri garantiye alıyoruz
+                guncel_val = float(guncel[e])
+                onceki_val = float(onceki[e])
+                degisim_tutari = guncel_val - onceki_val
                 
-                varlik_data.append({'Cins': e, 'Tutar': guncel[e], 'Yüzde': yuzde, 'Icon': enstruman_bilgi[e]})
+                # Yüzde hesaplama
+                if onceki_val > 0:
+                    yuzde = (degisim_tutari / onceki_val) * 100
+                else:
+                    yuzde = 100.0 if degisim_tutari > 0 else 0.0
+                
+                # Delta metni: Eğer sayı negatifse başına otomatik "-" gelir
+                delta_metni = f"%{yuzde:.2f}"
+                
+                varlik_data.append({
+                    'Cins': e, 
+                    'Tutar': guncel_val, 
+                    'Delta': delta_metni,
+                    'Icon': enstruman_bilgi[e]
+                })
         
         df_v = pd.DataFrame(varlik_data).sort_values(by="Tutar", ascending=False)
         cols = st.columns(4)
         for i, (index, row) in enumerate(df_v.iterrows()):
             with cols[i % 4]:
-                st.metric(f"{row['Icon']} {row['Cins']}", f"{int(row['Tutar']):,.0f}".replace(",", "."), f"%{row['Yüzde']:.2f}")
+                # Streamlit "delta" içinde "-" işaretini görünce rengi kırmızı, oku aşağı yapar
+                st.metric(
+                    label=f"{row['Icon']} {row['Cins']}", 
+                    value=f"{int(row['Tutar']):,.0f}".replace(",", "."), 
+                    delta=row['Delta']
+                )
 
         st.divider()
         sub_tab1, sub_tab2 = st.tabs(["🥧 Varlık Dağılımı", "📈 Gelişim Analizi"])
