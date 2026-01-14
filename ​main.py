@@ -32,6 +32,31 @@ st.markdown("""<style>
     [data-testid="stMetricValue"] { font-size: 18px !important; }
     div[data-testid="stMetric"] { background-color: #f8f9fa; padding: 10px; border-radius: 8px; border: 1px solid #eee; }
     </style>""", unsafe_allow_html=True)
+# CSS Düzenlemeleri
+st.markdown("""<style>
+    /* Metrik değerlerinin font boyutunu ayarlar */
+    [data-testid="stMetricValue"] { font-size: 18px !important; }
+    div[data-testid="stMetric"] { background-color: #f8f9fa; padding: 10px; border-radius: 8px; border: 1px solid #eee; }
+    
+    /* Number Input içindeki + ve - butonlarını gizler */
+    button[step="1"], button[step="0.01"], .stNumberInput div[data-baseweb="input"] > div:last-child {
+        display: none !important;
+    }
+    
+    /* Chrome, Safari, Edge ve Opera için okları kaldırır */
+    input::-webkit-outer-spin-button,
+    input::-webkit-inner-spin-button {
+        -webkit-appearance: none;
+        margin: 0;
+    }
+
+    /* Firefox için okları kaldırır */
+    input[type=number] {
+        -moz-appearance: textfield;
+    }
+    </style>""", unsafe_allow_html=True)
+
+# CSS Düzenlemeleri
 
 def get_son_bakiye_ve_limit():
     try:
