@@ -53,28 +53,45 @@ with tab_portfoy:
     with st.sidebar:
         st.header("📥 Portföy Güncelle")
         
-        # Mevcut en son verileri bir sözlükte tutalım (Varsayılan: 0.0)
-        son_veriler = {e: 0.0 for e in enstrumanlar}
-        if not df_p.empty:
-            son_kayit = df_p.iloc[-1]
-            son_veriler = {e: float(son_kayit[e]) for e in enstrumanlar}
+        # 1. VERİYİ SİDEBAR İÇİNDE ÇEKİYORUZ (Hata almamak için)
+        try:
+            temp_data = ws_portfoy.get_all_records()
+            if temp_data:
+                df_temp = pd.DataFrame(temp_data)
+                son_kayitlar = df_temp.iloc[-1]
+            else:
+                son_kayitlar = {e: 0.0 for e in enstrumanlar}
+        except:
+            son_kayitlar = {e: 0.0 for e in enstrumanlar}
 
         with st.form("p_form", clear_on_submit=True):
             p_in = {}
             for e in enstrumanlar:
-                # Value kısmına son_veriler[e] yazarsak kutucuklar son değerle dolu gelir
-                # Eğer kutucukların boş kalmasını ama arkada eski verinin korunmasını istersen value=None kalabilir
-                p_in[e] = st.number_input(f"{enstruman_bilgi[e]} {e}", min_value=0.0, value=None, format="%.f", help=f"Son değer: {son_veriler[e]:,.0f}")
+                # Son değeri bulup ipucu olarak göster
+                try:
+                    son_val = float(son_kayitlar.get(e, 0))
+                except:
+                    son_val = 0.0
+                
+                p_in[e] = st.number_input(
+                    f"{enstruman_bilgi[e]} {e}", 
+                    min_value=0.0, 
+                    value=None, 
+                    format="%.f",
+                    help=f"Son Kayıtlı Değer: {int(son_val):,.0f} TL"
+                )
             
             if st.form_submit_button("🚀 Kaydet"):
+                # 2. KAYIT MANTIĞI: Boşsa son kaydı yapıştır
                 yeni_satir = [datetime.now().strftime('%Y-%m-%d')]
                 for e in enstrumanlar:
-                    # EĞER input boşsa (None), son_veriler'deki değeri al, değilse inputu al
-                    deger = p_in[e] if p_in[e] is not None else son_veriler[e]
-                    yeni_satir.append(deger)
+                    if p_in[e] is not None:
+                        yeni_satir.append(p_in[e])
+                    else:
+                        yeni_satir.append(float(son_kayitlar.get(e, 0)))
                 
                 ws_portfoy.append_row(yeni_satir, value_input_option='RAW')
-                st.success("Portföy güncellendi (Boş bırakılanlar korundu).")
+                st.success("Kaydedildi!")
                 st.rerun()
 
     data_p = ws_portfoy.get_all_records()
