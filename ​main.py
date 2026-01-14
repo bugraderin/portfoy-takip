@@ -8,14 +8,6 @@ import plotly.express as px
 # --- SAYFA AYARLARI ---
 st.set_page_config(page_title="Finansal Takip", layout="wide")
 
-# --- RENK PALETİ TANIMLAMA (Modern ve Birbirine Uyumlu) ---
-RENK_HARITASI = {
-    'Hisse Senedi': '#1f77b4', 'Altın': '#FFD700', 'Gümüş': '#C0C0C0', 
-    'Fon': '#9467bd', 'Döviz': '#2ca02c', 'Kripto': '#ff7f0e', 
-    'Mevduat': '#17becf', 'BES': '#d62728'
-}
-
-
 # Türkçe Ay Sözlükleri
 TR_AYLAR_KISA = {'Jan': 'Oca', 'Feb': 'Şub', 'Mar': 'Mar', 'Apr': 'Nis', 'May': 'May', 'Jun': 'Haz',
                 'Jul': 'Tem', 'Aug': 'Ağu', 'Sep': 'Eyl', 'Oct': 'Eki', 'Nov': 'Kas', 'Dec': 'Ara'}
@@ -35,15 +27,11 @@ try:
 except Exception as e:
     st.error(f"Bağlantı Hatası: {e}"); st.stop()
 
-# --- CSS Düzenlemeleri ---
-st.markdown("""
-<style>
+# CSS Düzenlemeleri
+st.markdown("""<style>
     [data-testid="stMetricValue"] { font-size: 18px !important; }
     div[data-testid="stMetric"] { background-color: #f8f9fa; padding: 10px; border-radius: 8px; border: 1px solid #eee; }
-    input::-webkit-outer-spin-button, input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
-    input[type=number] { -moz-appearance: textfield; }
-</style>
-""", unsafe_allow_html=True)
+    </style>""", unsafe_allow_html=True)
 
 def get_son_bakiye_ve_limit():
     try:
@@ -54,7 +42,7 @@ def get_son_bakiye_ve_limit():
         return 0.0, 0.0
     except: return 0.0, 0.0
 
-# --- SEKMELER (AI Sekmesi Kaldırıldı) ---
+# --- SEKMELER ---
 tab_portfoy, tab_gelir, tab_gider, tab_ayrilan = st.tabs(["📊 Portföy", "💵 Gelirler", "💸 Giderler", "🛡️ Bütçe"])
 
 # --- SEKME 1: PORTFÖY ---
@@ -64,22 +52,10 @@ with tab_portfoy:
 
     with st.sidebar:
         st.header("📥 Portföy Güncelle")
-        try:
-            temp_data = ws_portfoy.get_all_records()
-            son_kayitlar = pd.DataFrame(temp_data).iloc[-1] if temp_data else {e: 0.0 for e in enstrumanlar}
-        except: son_kayitlar = {e: 0.0 for e in enstrumanlar}
-
         with st.form("p_form", clear_on_submit=True):
-            p_in = {e: st.number_input(f"{enstruman_bilgi[e]} {e}", min_value=0.0, value=None, format="%.f", help=f"Son Değer: {int(float(son_kayitlar.get(e,0))):,.0f} TL") for e in enstrumanlar}
+            p_in = {e: st.number_input(f"{enstruman_bilgi[e]} {e}", min_value=0.0, value=None, format="%.f") for e in enstrumanlar}
             if st.form_submit_button("🚀 Kaydet"):
-                yeni_satir = [datetime.now().strftime('%Y-%m-%d')] + [p_in[e] if p_in[e] is not None else float(son_kayitlar.get(e, 0)) for e in enstrumanlar]
-                bugun = datetime.now().strftime('%Y-%m-%d')
-                tarihler = ws_portfoy.col_values(1)
-                if bugun in tarihler:
-                    satir_no = tarihler.index(bugun) + 1
-                    ws_portfoy.update(f"A{satir_no}:I{satir_no}", [yeni_satir])
-                else:
-                    ws_portfoy.append_row(yeni_satir, value_input_option='RAW')
+                ws_portfoy.append_row([datetime.now().strftime('%Y-%m-%d')] + [p_in[e] or 0 for e in enstrumanlar], value_input_option='RAW')
                 st.rerun()
 
     data_p = ws_portfoy.get_all_records()
@@ -89,35 +65,65 @@ with tab_portfoy:
         df_p = df_p.dropna(subset=['tarih']).sort_values('tarih')
         for col in enstrumanlar: df_p[col] = pd.to_numeric(df_p[col], errors='coerce').fillna(0)
         df_p['Toplam'] = df_p[enstrumanlar].sum(axis=1)
+        
         guncel = df_p.iloc[-1]
-        st.metric("Toplam Varlık (TL)", f"{int(guncel['Toplam']):,.0f}".replace(",", "."))
+        toplam_tl = guncel['Toplam']
 
+        # TOPLAM VARLIK (Değişim metriği kaldırıldı)
+        st.metric("Toplam Varlık (TL)", f"{int(toplam_tl):,.0f}".replace(",", "."))
+
+        # SEÇENEKLİ DÖNEMSEL DEĞİŞİM (Akıllı Mantık)
         st.write("### ⏱️ Değişim Analizi")
         periyotlar = {"1 Gün": 1, "1 Ay": 30, "3 Ay": 90, "6 Ay": 180, "1 Yıl": 365}
         secilen_periyot = st.selectbox("Analiz Periyodu Seçin", list(periyotlar.keys()))
-        hedef_tarih = guncel['tarih'] - timedelta(days=periyotlar[secilen_periyot])
         
-        if len(df_p) > 1:
-            baz_deger = float(df_p.iloc[-2]['Toplam']) if secilen_periyot == "1 Gün" else float(df_p[(df_p['tarih'] > hedef_tarih) & (df_p['tarih'] <= guncel['tarih'])]['Toplam'].mean() or 0)
-            if baz_deger > 0:
-                fark = float(guncel['Toplam']) - baz_deger
-                yuzde_deg = (fark / baz_deger) * 100
-                st.metric(f"{secilen_periyot} Değişimi", f"{int(fark):,.0f} TL".replace(",", "."), delta=f"{yuzde_deg:.2f}%")
+        gun_farki = periyotlar[secilen_periyot]
+        hedef_tarih = guncel['tarih'] - timedelta(days=gun_farki)
+        
+        # Seçilen günden önceki en yakın kaydı bul, yoksa mevcut en eski kaydı al
+        gecmis_data = df_p[df_p['tarih'] <= hedef_tarih]
+        if gecmis_data.empty and len(df_p) > 1:
+            gecmis_data = df_p.head(1) # Elindeki en eski kaydı baz al
+            st.caption(f"ℹ️ Seçilen periyot için yeterli geçmiş veri olmadığından, sistemdeki en eski kayıt ({gecmis_data.iloc[0]['tarih'].strftime('%d.%m.%Y')}) baz alındı.")
+        
+        if not gecmis_data.empty and len(df_p) > 1:
+            eski_deger = gecmis_data.iloc[-1]['Toplam']
+            if eski_deger > 0:
+                fark = toplam_tl - eski_deger
+                yuzde = (fark / eski_deger) * 100
+                st.metric(f"{secilen_periyot} Değişimi", f"{int(fark):,.0f} TL".replace(",", "."), f"%{yuzde:.2f}")
+        else:
+            st.info("Kıyaslama yapabilmek için en az 2 farklı günlük kayıt gereklidir.")
 
         st.divider()
+        # Enstrüman metrikleri
         onceki = df_p.iloc[-2] if len(df_p) > 1 else guncel
-        varlik_data = [{'Cins': e, 'Tutar': float(guncel[e]), 'Delta': f"{((float(guncel[e])-float(onceki[e]))/float(onceki[e])*100 if float(onceki[e])>0 else 0):.2f}%", 'Icon': enstruman_bilgi[e]} for e in enstrumanlar if guncel[e] > 0]
+        varlik_data = []
+        for e in enstrumanlar:
+            if guncel[e] > 0:
+                degisim = guncel[e] - onceki[e]
+                yuzde = (degisim / onceki[e] * 100) if onceki[e] > 0 else 0
+                varlik_data.append({'Cins': e, 'Tutar': guncel[e], 'Yüzde': yuzde, 'Icon': enstruman_bilgi[e]})
         df_v = pd.DataFrame(varlik_data).sort_values(by="Tutar", ascending=False)
         cols = st.columns(4)
-        for i, (idx, row) in enumerate(df_v.iterrows()):
-            cols[i % 4].metric(f"{row['Icon']} {row['Cins']}", f"{int(row['Tutar']):,.0f}".replace(",", "."), delta=row['Delta'])
+        for i, (index, row) in enumerate(df_v.iterrows()):
+            with cols[i % 4]:
+                st.metric(f"{row['Icon']} {row['Cins']}", f"{int(row['Tutar']):,.0f}".replace(",", "."), f"%{row['Yüzde']:.2f}")
 
         st.divider()
-        sub1, sub2 = st.tabs(["🥧 Varlık Dağılımı", "📈 Gelişim Analizi"])
-        with sub1:
-            st.plotly_chart(px.pie(df_v, values='Tutar', names='Cins', hole=0.4), use_container_width=True)
-        with sub2:
-            st.plotly_chart(px.line(df_p, x='tarih', y='Toplam', markers=True), use_container_width=True)
+        sub_tab1, sub_tab2 = st.tabs(["🥧 Varlık Dağılımı", "📈 Gelişim Analizi"])
+        with sub_tab1:
+            df_v['Etiket'] = df_v['Icon'] + " " + df_v['Cins']
+            fig_p = px.pie(df_v, values='Tutar', names='Etiket', hole=0.4, color_discrete_sequence=px.colors.qualitative.Pastel)
+            fig_p.update_traces(hovertemplate="%{label}<br>Tutar: %{value:,.0f}")
+            st.plotly_chart(fig_p, use_container_width=True)
+        with sub_tab2:
+            df_p['tarih_tr'] = df_p['tarih'].dt.day.astype(str) + " " + df_p['tarih'].dt.month.map(TR_AYLAR_TAM)
+            fig_l = px.line(df_p, x='tarih', y='Toplam', markers=True, title="Toplam Varlık Seyri")
+            fig_l.update_traces(customdata=df_p['tarih_tr'], hovertemplate="Tarih: %{customdata}<br>Toplam: %{y:,.0f}")
+            fig_l.update_xaxes(tickvals=df_p['tarih'], ticktext=[f"{d.day} {TR_AYLAR_KISA.get(d.strftime('%b'))}" for d in df_p['tarih']], title="Tarih")
+            fig_l.update_layout(dragmode='pan', modebar_remove=['select2d', 'lasso2d', 'zoomIn2d', 'zoomOut2d', 'autoScale2d', 'resetScale2d', 'toImage'])
+            st.plotly_chart(fig_l, use_container_width=True, config={'scrollZoom': True})
 
 # --- SEKME 2: GELİRLER ---
 with tab_gelir:
@@ -131,6 +137,19 @@ with tab_gelir:
             toplam = (m or 0) + (p or 0) + (y or 0)
             ws_gelir.append_row([datetime.now().strftime('%Y-%m-%d'), m or 0, p or 0, y or 0, toplam], value_input_option='RAW')
             st.success("Kaydedildi."); st.rerun()
+
+    data_g = ws_gelir.get_all_records()
+    if data_g:
+        df_g = pd.DataFrame(data_g)
+        df_g['tarih'] = pd.to_datetime(df_g['tarih'], errors='coerce')
+        for col in ["Maaş", "Prim&Promosyon", "Yatırımlar", "Toplam"]:
+            if col in df_g.columns: df_g[col] = pd.to_numeric(df_g[col], errors='coerce').fillna(0)
+        df_g['tarih_tr'] = df_g['tarih'].dt.month.map(TR_AYLAR_TAM) + " " + df_g['tarih'].dt.year.astype(str)
+        fig_gl = px.line(df_g, x='tarih', y='Toplam', markers=True, title="Aylık Gelir Gelişimi")
+        fig_gl.update_traces(customdata=df_g['tarih_tr'], hovertemplate="Dönem: %{customdata}<br>Gelir: %{y:,.0f}")
+        fig_gl.update_xaxes(tickvals=df_g['tarih'], ticktext=[f"{TR_AYLAR_KISA.get(d.strftime('%b'))} {d.year}" for d in df_g['tarih']], title="Dönem")
+        fig_gl.update_layout(dragmode='pan', modebar_remove=['select2d', 'lasso2d', 'zoomIn2d', 'zoomOut2d', 'autoScale2d', 'resetScale2d', 'toImage'])
+        st.plotly_chart(fig_gl, use_container_width=True, config={'scrollZoom': True})
 
 # --- SEKME 3: GİDERLER ---
 with tab_gider:
@@ -147,6 +166,21 @@ with tab_gider:
                 ws_gider.append_row([datetime.now().strftime('%Y-%m-%d')] + [inputs[k] or 0 for k in gider_ikonlari.keys()], value_input_option='RAW')
                 ws_ayrilan.append_row([datetime.now().strftime('%Y-%m-%d'), limit, yeni_kalan], value_input_option='RAW')
                 st.success(f"Kaydedildi. Kalan: {int(yeni_kalan)}"); st.rerun()
+
+    data_gi = ws_gider.get_all_records()
+    if data_gi:
+        df_gi = pd.DataFrame(data_gi)
+        kats = list(gider_ikonlari.keys())
+        for c in kats:
+            if c in df_gi.columns: df_gi[c] = pd.to_numeric(df_gi[c], errors='coerce').fillna(0)
+        top_gi = df_gi[kats].sum().reset_index()
+        top_gi.columns = ['Kategori', 'Tutar']
+        top_gi['Etiket'] = top_gi['Kategori'].map(lambda x: f"{gider_ikonlari.get(x, '')} {x}")
+        if top_gi['Tutar'].sum() > 0:
+            st.divider()
+            fig_g_pie = px.pie(top_gi[top_gi['Tutar']>0], values='Tutar', names='Etiket', hole=0.4, title="Toplam Gider Dağılımı", color_discrete_sequence=px.colors.qualitative.Pastel)
+            fig_g_pie.update_traces(hovertemplate="%{label}<br>Tutar: %{value:,.0f}")
+            st.plotly_chart(fig_g_pie, use_container_width=True)
 
 # --- SEKME 4: BÜTÇE ---
 with tab_ayrilan:
