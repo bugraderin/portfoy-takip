@@ -80,9 +80,11 @@ with tab_portfoy:
                     format="%.f",
                     help=f"Son Kayıtlı Değer: {int(son_val):,.0f} TL"
                 )
+
+           #  Kayıt Butonu #
             
             if st.form_submit_button("🚀 Kaydet"):
-                # 2. KAYIT MANTIĞI: Boşsa son kaydı yapıştır
+                # 1. Yeni satır verisini hazırlıyoruz
                 yeni_satir = [datetime.now().strftime('%Y-%m-%d')]
                 for e in enstrumanlar:
                     if p_in[e] is not None:
@@ -90,9 +92,24 @@ with tab_portfoy:
                     else:
                         yeni_satir.append(float(son_kayitlar.get(e, 0)))
                 
-                ws_portfoy.append_row(yeni_satir, value_input_option='RAW')
-                st.success("Kaydedildi!")
+                # 2. AYNI GÜN KONTROLÜ
+                bugun = datetime.now().strftime('%Y-%m-%d')
+                tarihler = ws_portfoy.col_values(1) # A sütunundaki tüm tarihleri çeker
+                
+                if bugun in tarihler:
+                    # Eğer bugün zaten listede varsa, o satırın numarasını bul (index 0'dan başlar, o yüzden +1)
+                    satir_no = tarihler.index(bugun) + 1
+                    # A'dan I'ya kadar olan hücreleri bu yeni liste ile güncelle
+                    # Not: [yeni_satir] şeklinde liste içinde liste göndermeliyiz
+                    ws_portfoy.update(f"A{satir_no}:I{satir_no}", [yeni_satir])
+                    st.success(f"📅 {bugun} tarihli kaydınız güncellendi!")
+                else:
+                    # Bugün daha önce hiç kayıt atılmamışsa yeni satır ekle
+                    ws_portfoy.append_row(yeni_satir, value_input_option='RAW')
+                    st.success("✅ Yeni gün kaydı başarıyla oluşturuldu!")
+                
                 st.rerun()
+              #  Kayıt Butonu #
 
     data_p = ws_portfoy.get_all_records()
     if data_p:
