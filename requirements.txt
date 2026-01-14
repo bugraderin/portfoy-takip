@@ -3,7 +3,3 @@ gspread
 google-auth
 pandas
 plotly
-yfinance
-requests
-tefas-crawler
-beautifulsoup4
