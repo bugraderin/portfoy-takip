@@ -33,40 +33,22 @@ except Exception as e:
 # --- ANALİZ VE VERİ FONKSİYONLARI ---
 
 
-@st.cache_data(ttl=43200)
-def get_tefas_analiz(kod):
+import requests
+from bs4 import BeautifulSoup
+
+def get_fon_fiyat_alternatif(kod):
     try:
-        session = requests.Session()
-        # TEFAS'a sanki tarayıcıdan geliyormuşuz gibi güven verelim
-        headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-            "X-Requested-With": "XMLHttpRequest",
-            "Accept": "application/json, text/javascript, */*; q=0.01",
-            "Referer": f"https://www.tefas.gov.tr/FonAnaliz.aspx?FonKod={kod}"
-        }
+        # Örnek Mynet link yapısı
+        url = f"https://finans.mynet.com/yatirimfonlari/detay/{kod}/"
+        headers = {"User-Agent": "Mozilla/5.0"}
+        res = requests.get(url, headers=headers, timeout=10)
+        soup = BeautifulSoup(res.text, 'html.parser')
         
-        # 5 yıllık tarih aralığını hesapla (Selenium'daki RadioButton_7'ye denk gelir)
-        bitis = datetime.now()
-        baslangic = bitis - timedelta(days=1825) # 5 Yıl
-        
-        payload = {
-            "fundCode": kod,
-            "startDate": baslangic.strftime("%d.%m.%Y"),
-            "endDate": bitis.strftime("%d.%m.%Y")
-        }
-        
-        # API'ye isteği gönder
-        url = "https://www.tefas.gov.tr/api/DB/GetFundHistory"
-        res = session.post(url, data=payload, headers=headers, timeout=15)
-        
-        if res.status_code == 200:
-            data = res.json()
-            if data:
-                df = pd.DataFrame(data)
-                df = df.rename(columns={"Price": "price", "Date": "date"})
-                df['date'] = pd.to_datetime(df['date'], dayfirst=True)
-                df['price'] = pd.to_numeric(df['price'])
-                return df.sort_values('date')
+        # Sayfadaki fiyat bilgisini bulmaya çalışıyoruz
+        # Not: Mynet'in HTML yapısına göre 'span' veya 'div' sınıfları değişebilir
+        fiyat_etiketi = soup.find("span", {"class": "last-price"}) # Bu bir örnektir
+        if fiyat_etiketi:
+            return float(fiyat_etiketi.text.replace(",", "."))
         return None
     except:
         return None
