@@ -5,3 +5,4 @@ pandas
 plotly
 yfinance
 requests
+tefas-crawler
