@@ -45,7 +45,7 @@ def get_tefas_analiz(kod):
         return df
     except: return None
       
-      @st.cache_data(ttl=3600)
+@st.cache_data(ttl=3600)
 def get_hisse_fiyat(kod):
     try:
         # BIST hisseleri için kodun sonuna .IS eklenir
