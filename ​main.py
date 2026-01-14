@@ -32,55 +32,43 @@ except Exception as e:
 
 # --- ANALİZ VE VERİ FONKSİYONLARI ---
 
+
 @st.cache_data(ttl=43200)
 def get_tefas_analiz(kod):
     try:
-        # Oturum başlat (Çerezleri ve bağlantıyı canlı tutar)
         session = requests.Session()
-        
-        # Önce ana sayfaya bir istek atıp "ziyaretçi" çerezi alalım
-        main_url = "https://www.tefas.gov.tr/FonAnaliz.aspx?FonKod=" + kod
+        # TEFAS'a sanki tarayıcıdan geliyormuşuz gibi güven verelim
         headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-        }
-        session.get(main_url, headers=headers, timeout=10)
-
-        # Şimdi veriyi isteyelim
-        api_url = "https://www.tefas.gov.tr/api/DB/GetFundHistory"
-        payload = {
-            "fundCode": kod,
-            "startDate": (datetime.now() - timedelta(days=1850)).strftime("%d.%m.%Y"),
-            "endDate": datetime.now().strftime("%d.%m.%Y")
-        }
-        
-        # API Header'ları (Referer ve X-Requested-With kritik!)
-        api_headers = {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
             "X-Requested-With": "XMLHttpRequest",
-            "Origin": "https://www.tefas.gov.tr",
-            "Referer": main_url,
-            "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8"
+            "Accept": "application/json, text/javascript, */*; q=0.01",
+            "Referer": f"https://www.tefas.gov.tr/FonAnaliz.aspx?FonKod={kod}"
         }
-
-        res = session.post(api_url, data=payload, headers=api_headers, timeout=15)
         
-        # Eğer sunucu JSON dönmezse hatayı yakala
-        try:
+        # 5 yıllık tarih aralığını hesapla (Selenium'daki RadioButton_7'ye denk gelir)
+        bitis = datetime.now()
+        baslangic = bitis - timedelta(days=1825) # 5 Yıl
+        
+        payload = {
+            "fundCode": kod,
+            "startDate": baslangic.strftime("%d.%m.%Y"),
+            "endDate": bitis.strftime("%d.%m.%Y")
+        }
+        
+        # API'ye isteği gönder
+        url = "https://www.tefas.gov.tr/api/DB/GetFundHistory"
+        res = session.post(url, data=payload, headers=headers, timeout=15)
+        
+        if res.status_code == 200:
             data = res.json()
-        except:
-            return None # JSON değilse (HTML engeli vb.) direkt None dön
-
-        if not data:
-            return None
-            
-        df = pd.DataFrame(data)
-        df = df.rename(columns={"Price": "price", "Date": "date"})
-        df['date'] = pd.to_datetime(df['date'], dayfirst=True)
-        df['price'] = pd.to_numeric(df['price'])
-        df = df.sort_values('date')
-        return df
-
-    except Exception as e:
+            if data:
+                df = pd.DataFrame(data)
+                df = df.rename(columns={"Price": "price", "Date": "date"})
+                df['date'] = pd.to_datetime(df['date'], dayfirst=True)
+                df['price'] = pd.to_numeric(df['price'])
+                return df.sort_values('date')
+        return None
+    except:
         return None
       
 @st.cache_data(ttl=3600)
