@@ -1,3 +1,4 @@
+import requests
 import streamlit as st
 import gspread
 from google.oauth2.service_account import Credentials
@@ -5,7 +6,6 @@ import pandas as pd
 from datetime import datetime, timedelta
 import plotly.express as px
 import google.generativeai as genai
-import requests
 import json
 
 # --- SAYFA AYARLARI ---
@@ -166,37 +166,41 @@ with tab_ai:
             st.error("Secrets kısmında GEMINI_API_KEY bulunamadı.")
         else:
             try:
-                # 1. Makale ve Notları Çek (Öğrenme Kaynağı)
-                raw_notlar = ws_ai_kaynak.col_values(1)[1:]
+                # 1. Sheets'ten 'AI' sayfasındaki verileri çek
+                # (A sütununda makalelerin olduğunu varsayıyoruz)
+                raw_notlar = ws_ai_kaynak.col_values(1)[1:] 
                 egitim_notlari = " ".join([str(n) for n in raw_notlar if n])
                 
-                # 2. Finansal Verileri Hazırla
-                guncel_toplam = df_p.iloc[-1]['Toplam'] if not df_p.empty else 0
-                varlik_detay = ", ".join([f"{e}: {int(guncel.get(e,0))} TL" for e in enstrumanlar if guncel.get(e,0) > 0])
+                # 2. Güncel portföy değerini hesapla (Hata payını sıfırlamak için)
+                if not df_p.empty:
+                    guncel_toplam = df_p.iloc[-1]['Toplam']
+                    guncel_satir = df_p.iloc[-1]
+                else:
+                    guncel_toplam = 0
+                    guncel_satir = {}
+
+                varlik_detay = ", ".join([f"{e}: {int(guncel_satir.get(e,0))} TL" for e in enstrumanlar if guncel_satir.get(e,0) > 0])
                 kalan_butce, limit = get_son_bakiye_ve_limit()
                 
-                # 3. Öğretici Prompt (System Instruction'ı manuel olarak en tepeye ekliyoruz)
-                # Bu yöntem kütüphane sürümü ne olursa olsun AI'nın 'öğrenmesini' sağlar.
-                full_prompt = f"""
-                SİSTEM TALİMATI: Sen Düzey 3 uzman bir finans danışmanısın. 
-                Sana verilen şu makaleler senin temel strateji rehberindir: {egitim_notlari}
+                # 3. AI'ya "Öğretilecek" talimat ve veriler
+                prompt_text = f"""
+                SİSTEM TALİMATI: Sen uzman bir finansal danışmansın. 
+                Sana verilen şu makale/notlar senin analiz temelindir: {egitim_notlari}
                 
-                KULLANICI VERİLERİ:
-                Varlıklar: {varlik_detay}
-                Toplam Portföy: {int(guncel_toplam)} TL
-                Bütçe: {int(kalan_butce)} TL kalan (Aylık Limit: {int(limit)} TL)
+                GÜNCEL VERİLER:
+                - Portföy: {varlik_detay}
+                - Toplam Varlık: {int(guncel_toplam)} TL
+                - Bütçe: {int(kalan_butce)} TL kalan (Aylık Limit: {int(limit)} TL)
                 
-                ANALİZ TALEBİ: Yukarıdaki verileri, sana öğrettiğim strateji rehberine göre analiz et ve 3 madde halinde tavsiye ver.
+                Lütfen bu verileri, sana verdiğim makale notlarındaki stratejilere göre yorumla.
                 """
                 
-                # 4. Doğrudan API Bağlantısı (Kütüphaneyi ve 404 hatalarını baypas eder)
-                # v1beta yerine v1 kullanarak en stabil endpoint'e bağlanıyoruz
+                # 4. Doğrudan API Bağlantısı (Kütüphane hatasını baypas eder)
+                # v1beta yerine v1 kullanarak en stabil adrese gidiyoruz
                 url = f"https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key={api_key}"
                 headers = {'Content-Type': 'application/json'}
                 payload = {
-                    "contents": [{
-                        "parts": [{"text": full_prompt}]
-                    }]
+                    "contents": [{"parts": [{"text": prompt_text}]}]
                 }
                 
                 with st.spinner("Gemini makalelerini ve portföyünü analiz ediyor..."):
@@ -204,14 +208,11 @@ with tab_ai:
                     res_json = response.json()
                     
                     if response.status_code == 200:
-                        # Yanıtı al ve göster
                         ai_yaniti = res_json['candidates'][0]['content']['parts'][0]['text']
                         st.markdown("### 📝 AI Stratejik Raporu")
                         st.info(ai_yaniti)
                     else:
-                        # Hata mesajını detaylı göster ki nedenini anlayalım
-                        hata_mesaji = res_json.get('error', {}).get('message', 'Bilinmeyen API Hatası')
-                        st.error(f"Google API Hatası: {hata_mesaji}")
+                        st.error(f"Google API Hatası: {res_json.get('error', {}).get('message', 'Bilinmeyen Hata')}")
                         
             except Exception as e:
                 st.error(f"Sistem Hatası: {e}")
