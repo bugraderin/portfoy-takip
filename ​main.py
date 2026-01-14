@@ -217,43 +217,35 @@ with tab_ayrilan:
 
 # --- SEKME 5: CANLI VERİ & TEFAS İÇERİĞİ ---
 with tab_canli:
-    st.subheader("🌐 Canlı Piyasa ve Fon Getiri Analizi")
+    st.subheader("🌐 Canlı Piyasa ve Fon Analizi")
     
-    with st.expander("➕ Yeni Lot / Enstrüman Ekle", expanded=False):
-        with st.form("lot_ekle_form", clear_on_submit=True):
-            col1, col2, col3 = st.columns(3)
-            tur = col1.selectbox("Tür", ["Fon (TEFAS)", "Hisse (BIST)", "Döviz/Altın"])
-            kod = col2.text_input("Kod (Örn: AFT, THYAO, USD, GRAM)").upper()
-            adet = col3.number_input("Adet / Lot", min_value=0.0, step=0.01)
-            if st.form_submit_button("Sisteme Kaydet"):
-                ws_lotlar.append_row([datetime.now().strftime('%Y-%m-%d'), tur, kod, adet], value_input_option='RAW')
-                st.success(f"{kod} Lotlar sayfasına eklendi!"); st.rerun()
+    # ... (Yeni Lot Ekleme formu aynı kalsın) ...
 
     st.divider()
     secilen_kod = st.text_input("🔍 Fon Analizi (Örn: GMR, TI3, AFT)", value="AFT").upper()
     
     if secilen_kod:
-        with st.spinner("Veriler analiz ediliyor..."):
+        with st.spinner("Veriler çekiliyor..."):
             fon_data = get_tefas_analiz(secilen_kod)
-            if fon_data is not None:
-                getiriler = get_periyodik_getiri(fon_data)
-                m_cols = st.columns(len(getiriler))
-                for i, (label, val) in enumerate(getiriler.items()):
-                    with m_cols[i]:
-                        if val is not None:
-                            st.metric(label, f"%{val:.2f}", delta=f"{val:.1f}%")
-                        else: st.metric(label, "N/A")
+            
+            if fon_data is not None and not fon_data.empty:
+                # Güncel Fiyatı Büyükçe Gösterelim
+                guncel_fiyat = fon_data.iloc[-1]['price']
+                st.metric(f"{secilen_kod} Güncel Fiyat", f"{guncel_fiyat:,.4f} TL")
                 
-                fig_fon = px.line(fon_data, x='date', y='price', title=f"{secilen_kod} Fiyat Seyri")
-                st.plotly_chart(fig_fon, use_container_width=True)
+                # Eğer veri sadece 1 satırsa (Mynet'ten gelen durum)
+                if len(fon_data) == 1:
+                    st.info("ℹ️ TEFAS engeli nedeniyle geçmiş veriler ve grafik şu an gösterilemiyor, ancak güncel fiyat başarıyla çekildi.")
+                else:
+                    # Eğer bir şekilde geçmiş veri gelirse (TEFAS çalışırsa) grafiği çiz
+                    getiriler = get_periyodik_getiri(fon_data)
+                    m_cols = st.columns(len(getiriler))
+                    for i, (label, val) in enumerate(getiriler.items()):
+                        with m_cols[i]:
+                            if val is not None:
+                                st.metric(label, f"%{val:.2f}")
+                    
+                    fig_fon = px.line(fon_data, x='date', y='price', title=f"{secilen_kod} Fiyat Seyri")
+                    st.plotly_chart(fig_fon, use_container_width=True)
             else:
-                st.warning("Veri otomatik çekilemedi. (Sunucu Engeli veya Hatalı Kod)")
-
-    st.divider()
-    st.write("### 📂 Kayıtlı Lotlarım")
-    try:
-        lot_df = pd.DataFrame(ws_lotlar.get_all_records())
-        if not lot_df.empty:
-            st.dataframe(lot_df, use_container_width=True)
-    except:
-        st.error("Lotlar sayfası okunamadı.")
+                st.warning("⚠️ Veri çekilemedi. Mynet veya TEFAS şu an yanıt vermiyor.")
