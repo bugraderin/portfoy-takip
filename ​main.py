@@ -163,25 +163,25 @@ with tab_portfoy:
             st.info("Kıyaslama yapabilmek için en az 2 farklı günlük kayıt gereklidir.")
 
         st.divider()
-        # --- ENSTRÜMAN METRİKLERİ BÖLÜMÜ (GÜNCELLENDİ) ---
+        # --- ENSTRÜMAN METRİKLERİ BÖLÜMÜ (RENK HATASI DÜZELTİLDİ) ---
         onceki = df_p.iloc[-2] if len(df_p) > 1 else guncel
         varlik_data = [] 
         
         for e in enstrumanlar:
             if guncel[e] > 0:
-                # Sayısal değerleri garantiye alıyoruz
                 guncel_val = float(guncel[e])
                 onceki_val = float(onceki[e])
                 degisim_tutari = guncel_val - onceki_val
                 
-                # Yüzde hesaplama
                 if onceki_val > 0:
                     yuzde = (degisim_tutari / onceki_val) * 100
                 else:
                     yuzde = 100.0 if degisim_tutari > 0 else 0.0
                 
-                # Delta metni: Eğer sayı negatifse başına otomatik "-" gelir
-                delta_metni = f"%{yuzde:.2f}"
+                # KRİTİK DÜZELTME: 
+                # % işaretini sona aldık. Eğer sayı negatifse metin "-0.20%" olur.
+                # Streamlit en baştaki "-" işaretini görünce otomatik kırmızı yapar.
+                delta_metni = f"{yuzde:.2f}%"
                 
                 varlik_data.append({
                     'Cins': e, 
@@ -194,7 +194,6 @@ with tab_portfoy:
         cols = st.columns(4)
         for i, (index, row) in enumerate(df_v.iterrows()):
             with cols[i % 4]:
-                # Streamlit "delta" içinde "-" işaretini görünce rengi kırmızı, oku aşağı yapar
                 st.metric(
                     label=f"{row['Icon']} {row['Cins']}", 
                     value=f"{int(row['Tutar']):,.0f}".replace(",", "."), 
