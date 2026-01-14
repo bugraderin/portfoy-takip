@@ -167,9 +167,9 @@ with tab_ai:
             
             # Model Yapılandırması
             model = genai.GenerativeModel(
-                model_name='gemini-1.5-flash', # Başına 'models/' koymadan dene
-                system_instruction=f"Sen Düzey 3 uzmanısın. Şu notlara göre analiz yap: {egitim_notlari}"
-            )
+    model_name='gemini-1.5-flash', # Başına 'models/' eklemeden yazıyoruz
+    system_instruction=f"Sen Düzey 3 uzmanısın. Şu notlara göre analiz yap: {egitim_notlari}"
+)
             
             # Veri Özeti
             varlik_ozeti = ", ".join([f"{e}: {int(guncel.get(e,0))} TL" for e in enstrumanlar if guncel.get(e,0) > 0])
