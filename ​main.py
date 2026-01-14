@@ -38,10 +38,10 @@ st.markdown("""<style>
     [data-testid="stMetricValue"] { font-size: 18px !important; }
     div[data-testid="stMetric"] { background-color: #f8f9fa; padding: 10px; border-radius: 8px; border: 1px solid #eee; }
     
-    /* Number Input içindeki + ve - butonlarını gizler */
-    button[step="1"], button[step="0.01"], .stNumberInput div[data-baseweb="input"] > div:last-child {
-        display: none !important;
-    }
+    # CSS Düzenlemeleri
+st.markdown("""<style>
+    [data-testid="stMetricValue"] { font-size: 18px !important; }
+    div[data-testid="stMetric"] { background-color: #f8f9fa; padding: 10px; border-radius: 8px; border: 1px solid #eee; }
     
     /* Chrome, Safari, Edge ve Opera için okları kaldırır */
     input::-webkit-outer-spin-button,
@@ -53,6 +53,16 @@ st.markdown("""<style>
     /* Firefox için okları kaldırır */
     input[type=number] {
         -moz-appearance: textfield;
+    }
+
+    /* Streamlit'in kendi içindeki artı-eksi butonlarını gizler */
+    [data-testid="stNumberInputStepUp"], [data-testid="stNumberInputStepDown"] {
+        display: none !important;
+    }
+    
+    /* Kutunun genişliğini ve görünürlüğünü korur */
+    [data-testid="stNumberInput"] div[data-baseweb="input"] {
+        padding-right: 0px !important;
     }
     </style>""", unsafe_allow_html=True)
 
