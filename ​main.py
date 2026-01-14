@@ -31,19 +31,32 @@ except Exception as e:
     st.error(f"Bağlantı Hatası: {e}"); st.stop()
 
 # --- ANALİZ VE VERİ FONKSİYONLARI ---
-@st.cache_data(ttl=3600)
+@st.cache_data(ttl=43200)
 def get_tefas_analiz(kod):
     try:
-        crawler = Crawler()
-        # 5 yıllık getiri analizi için 1850 gün geriye gidiyoruz
-        baslangic = (datetime.now() - timedelta(days=1850)).strftime("%Y-%m-%d")
-        bitis = datetime.now().strftime("%Y-%m-%d")
-        df = crawler.fetch(start=baslangic, end=bitis, code=kod)
-        if df.empty: return None
-        df['date'] = pd.to_datetime(df['date'])
+        # Selenium/Crawler yerine doğrudan TEFAS API simülasyonu
+        url = "https://www.tefas.gov.tr/api/DB/GetFundHistory"
+        payload = {
+            "fundCode": kod,
+            "startDate": (datetime.now() - timedelta(days=1850)).strftime("%d.%m.%Y"),
+            "endDate": datetime.now().strftime("%d.%m.%Y")
+        }
+        # TEFAS'tan veriyi çek
+        import requests
+        res = requests.post(url, data=payload)
+        data = res.json()
+        
+        # Veriyi DataFrame'e çevir
+        df = pd.DataFrame(data)
+        # Sütun isimlerini koduna uyumlu hale getir
+        df = df.rename(columns={"Price": "price", "Date": "date"})
+        df['date'] = pd.to_datetime(df['date'], dayfirst=True)
+        df['price'] = pd.to_numeric(df['price'])
         df = df.sort_values('date')
         return df
-    except: return None
+    except Exception as e:
+        # Eğer hata alırsak sessizce None dön
+        return None
       
 @st.cache_data(ttl=3600)
 def get_hisse_fiyat(kod):
