@@ -31,7 +31,7 @@ except Exception as e:
 
 # --- GEMINI AI YAPILANDIRMASI ---
 if "GEMINI_API_KEY" in st.secrets:
-    genai.configure(api_key=st.secrets["GEMINI_API_KEY"], transport='rest')
+    genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
 else:
     st.warning("⚠️ GEMINI_API_KEY bulunamadı.")
 
