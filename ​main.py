@@ -11,6 +11,7 @@ st.set_page_config(page_title="Finansal Takip & AI Danışman", layout="wide")
 
 # --- 1. GOOGLE SHEETS & AI BAĞLANTISI ---
 scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
+
 try:
     # Google Sheets Bağlantısı
     creds = Credentials.from_service_account_info(st.secrets["gcp_service_account"], scopes=scope)
@@ -20,13 +21,19 @@ try:
     ws_gelir = spreadsheet.worksheet("Gelirler")
     ws_gider = spreadsheet.worksheet("Giderler")
     ws_ayrilan = spreadsheet.worksheet("Gidere Ayrılan Tutar")
-    ws_ai_kaynak = spreadsheet.worksheet("AI") # Yeni oluşturduğun sayfa
+    ws_ai_kaynak = spreadsheet.worksheet("AI")
+except Exception as e:
+    st.error(f"Google Sheets Bağlantı Hatası: {e}")
+    st.stop()
 
-# --- GEMINI AI YAPILANDIRMASI ---
+# --- GEMINI AI YAPILANDIRMASI (Try Bloğundan Sonra) ---
 if "GEMINI_API_KEY" in st.secrets:
-    genai.configure(api_key=st.secrets["GEMINI_API_KEY"]) # Bu satır içeride olmalı
+    try:
+        genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
+    except Exception as e:
+        st.error(f"AI Yapılandırma Hatası: {e}")
 else:
-    st.warning("⚠️ GEMINI_API_KEY bulunamadı. Lütfen Secrets ayarlarına ekleyin.") # Bu da içeride
+    st.warning("⚠️ GEMINI_API_KEY bulunamadı. Lütfen Secrets ayarlarına ekleyin.")
 
 # --- FONKSİYONLAR ---
 def get_son_bakiye_ve_limit():
