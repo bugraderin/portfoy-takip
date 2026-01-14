@@ -1,3 +1,5 @@
+import yfinance as yf
+from tefas import Crawler
 import streamlit as st
 import gspread
 from google.oauth2.service_account import Credentials
@@ -24,8 +26,39 @@ try:
     ws_gelir = spreadsheet.worksheet("Gelirler")
     ws_gider = spreadsheet.worksheet("Giderler")
     ws_ayrilan = spreadsheet.worksheet("Gidere Ayrılan Tutar")
+    ws_lotlar = spreadsheet.worksheet("Lotlar")
 except Exception as e:
     st.error(f"Bağlantı Hatası: {e}"); st.stop()
+
+# --- ANALİZ VE VERİ FONKSİYONLARI ---
+@st.cache_data(ttl=3600)
+def get_tefas_analiz(kod):
+    try:
+        crawler = Crawler()
+        # 5 yıllık getiri analizi için 1850 gün geriye gidiyoruz
+        baslangic = (datetime.now() - timedelta(days=1850)).strftime("%Y-%m-%d")
+        bitis = datetime.now().strftime("%Y-%m-%d")
+        df = crawler.fetch(start=baslangic, end=bitis, code=kod)
+        if df.empty: return None
+        df['date'] = pd.to_datetime(df['date'])
+        df = df.sort_values('date')
+        return df
+    except: return None
+
+def get_periyodik_getiri(df):
+    if df is None: return {}
+    son_fiyat = df.iloc[-1]['price']
+    periyotlar = {"1 Ay": 30, "3 Ay": 90, "6 Ay": 180, "1 Yıl": 365, "3 Yıl": 1095, "5 Yıl": 1825}
+    getiriler = {}
+    for etiket, gun in periyotlar.items():
+        hedef_tarih = df.iloc[-1]['date'] - timedelta(days=gun)
+        gecmis_df = df[df['date'] <= hedef_tarih]
+        if not gecmis_df.empty:
+            esk_fiyat = gecmis_df.iloc[-1]['price']
+            getiriler[etiket] = ((son_fiyat - esk_fiyat) / esk_fiyat) * 100
+        else:
+            getiriler[etiket] = None
+    return getiriler
 
 # CSS Düzenlemeleri
 st.markdown("""<style>
@@ -43,7 +76,7 @@ def get_son_bakiye_ve_limit():
     except: return 0.0, 0.0
 
 # --- SEKMELER ---
-tab_portfoy, tab_gelir, tab_gider, tab_ayrilan = st.tabs(["📊 Portföy", "💵 Gelirler", "💸 Giderler", "🛡️ Bütçe"])
+tab_portfoy, tab_gelir, tab_gider, tab_ayrilan, tab_canli = st.tabs(["📊 Portföy", "💵 Gelirler", "💸 Giderler", "🛡️ Bütçe", "🌐 Canlı Veri & TEFAS"])
 
 # --- SEKME 1: PORTFÖY ---
 with tab_portfoy:
@@ -189,3 +222,57 @@ with tab_ayrilan:
         if st.form_submit_button("Başlat"):
             ws_ayrilan.append_row([datetime.now().strftime('%Y-%m-%d'), yeni_l, yeni_l], value_input_option='RAW')
             st.success("Bütçe güncellendi."); st.rerun()
+
+
+# --- 5. SEKME 5: CANLI VERİ & TEFAS İÇERİĞİ ---
+with tab_canli:
+    st.subheader("🌐 Canlı Piyasa ve Fon Getiri Analizi")
+    
+    # --- VERİ GİRİŞ ALANI ---
+    with st.expander("➕ Yeni Lot / Enstrüman Ekle", expanded=False):
+        with st.form("lot_ekle_form", clear_on_submit=True):
+            col1, col2, col3 = st.columns(3)
+            tur = col1.selectbox("Tür", ["Fon (TEFAS)", "Hisse (BIST)", "Döviz/Altın"])
+            kod = col2.text_input("Kod (Örn: AFT, THYAO, USD, GRAM)").upper()
+            adet = col3.number_input("Adet / Lot", min_value=0.0, step=0.01)
+            if st.form_submit_button("Sisteme Kaydet"):
+                ws_lotlar.append_row([datetime.now().strftime('%Y-%m-%d'), tur, kod, adet], value_input_option='RAW')
+                st.success(f"{kod} Lotlar sayfasına eklendi!")
+                st.rerun()
+
+    # --- ANALİZ ALANI ---
+    st.divider()
+    secilen_kod = st.text_input("🔍 Detaylı Getiri Analizi İçin Fon Kodu Yazın (Örn: GMR, TI3, AFT)", value="AFT").upper()
+    
+    if secilen_kod:
+        with st.spinner("TEFAS'tan 5 yıllık veriler analiz ediliyor..."):
+            fon_data = get_tefas_analiz(secilen_kod)
+            if fon_data is not None:
+                getiriler = get_periyodik_getiri(fon_data)
+                
+                # Getiri Metrikleri
+                m_cols = st.columns(len(getiriler))
+                for i, (label, val) in enumerate(getiriler.items()):
+                    with m_cols[i]:
+                        if val is not None:
+                            st.metric(label, f"%{val:.2f}", delta=f"{val:.1f}%")
+                        else:
+                            st.metric(label, "N/A")
+                
+                # Grafik
+                fig_fon = px.line(fon_data, x='date', y='price', title=f"{secilen_kod} Fiyat Seyri (5 Yıl)")
+                st.plotly_chart(fig_fon, use_container_width=True)
+            else:
+                st.warning("Veri bulunamadı. Lütfen fon kodunu kontrol edin.")
+
+    # --- MEVCUT LOTLAR TABLOSU ---
+    st.divider()
+    st.write("### 📂 Kayıtlı Lotlarım")
+    try:
+        lot_df = pd.DataFrame(ws_lotlar.get_all_records())
+        if not lot_df.empty:
+            st.dataframe(lot_df, use_container_width=True)
+        else:
+            st.info("Henüz lot kaydı bulunmuyor.")
+    except:
+        st.error("Lotlar sayfası okunamadı. Lütfen Google Sheets'te 'Lotlar' sayfasını oluşturun.")
