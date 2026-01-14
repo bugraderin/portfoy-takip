@@ -22,11 +22,11 @@ try:
     ws_ayrilan = spreadsheet.worksheet("Gidere Ayrılan Tutar")
     ws_ai_kaynak = spreadsheet.worksheet("AI") # Yeni oluşturduğun sayfa
 
-    # Gemini AI Yapılandırması
-    if "GEMINI_API_KEY" in st.secrets:
-    genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
+# --- GEMINI AI YAPILANDIRMASI ---
+if "GEMINI_API_KEY" in st.secrets:
+    genai.configure(api_key=st.secrets["GEMINI_API_KEY"]) # Bu satır içeride olmalı
 else:
-    st.warning("⚠️ GEMINI_API_KEY bulunamadı. Lütfen Secrets ayarlarına ekleyin.")
+    st.warning("⚠️ GEMINI_API_KEY bulunamadı. Lütfen Secrets ayarlarına ekleyin.") # Bu da içeride
 
 # --- FONKSİYONLAR ---
 def get_son_bakiye_ve_limit():
