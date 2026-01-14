@@ -35,28 +35,22 @@ except Exception as e:
 # --- ANALİZ VE VERİ FONKSİYONLARI ---
 
 def get_tefas_analiz(kod):
-    def get_tefas_analiz(kod):
     try:
-        # 1. Sheets'teki 'Lotlar' sayfasından tüm veriyi çek
+        # Google Sheets'ten verileri çekiyoruz
         data = ws_lotlar.get_all_records()
         df_sheets = pd.DataFrame(data)
         
-        # 2. 'Kod' sütununda senin aradığın fonu (örn: AFT) bul
-        # Sütun isminin Sheets'te tam olarak "Kod" olduğundan emin ol
+        # 'Kod' sütununda seçilen fonu buluyoruz
         satir = df_sheets[df_sheets['Kod'] == kod]
         
         if not satir.empty:
-            # 3. O satırdaki 'GuncelFiyat' hücresini oku
+            # Sheets'teki 'GuncelFiyat' sütunundaki değeri al
             fiyat = satir.iloc[-1]['GuncelFiyat']
-            
-            # Veri temizleme (Hata payına karşı)
-            fiyat_str = str(fiyat).replace(",", ".")
-            return pd.DataFrame([{'date': datetime.now(), 'price': float(fiyat_str)}])
-            
+            # Sayıya çeviriyoruz
+            fiyat_float = float(str(fiyat).replace(",", "."))
+            return pd.DataFrame([{'date': datetime.now(), 'price': fiyat_float}])
         return None
     except Exception as e:
-        # Hata olursa Streamlit ekranında geçici bir uyarı gösterir (opsiyonel)
-        # st.error(f"Hata: {e}") 
         return None
       
 def get_periyodik_getiri(df):
