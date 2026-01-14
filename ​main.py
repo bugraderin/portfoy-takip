@@ -145,12 +145,29 @@ with tab_portfoy:
             gecmis_data = df_p.head(1)
             st.caption(f"ℹ️ En eski kayıt ({gecmis_data.iloc[0]['tarih'].strftime('%d.%m.%Y')}) baz alındı.")
         
-        if not gecmis_data.empty and len(df_p) > 1:
-            eski_deger = gecmis_data.iloc[-1]['Toplam']
-            if eski_deger > 0:
-                fark = toplam_tl - eski_deger
-                yuzde_deg = (fark / eski_deger) * 100
-                st.metric(f"{secilen_periyot} Değişimi", f"{int(fark):,.0f} TL".replace(",", "."), f"%{yuzde_deg:.2f}")
+        if not df_p.empty and len(df_p) > 1:
+            # 1. Mevcut değeri al
+            guncel_deger = guncel['Toplam']
+            
+            # 2. Seçilen periyottaki tüm verileri filtrele
+            mask = (df_p['tarih'] > hedef_tarih) & (df_p['tarih'] <= guncel['tarih'])
+            periyot_verileri = df_p.loc[mask]
+            
+            if not periyot_verileri.empty:
+                # 3. Periyodun ortalamasını hesapla
+                periyot_ortalamasi = periyot_verileri['Toplam'].mean()
+                
+                # 4. Mevcut değerin ortalamadan farkını ve yüzdesini bul
+                fark = guncel_deger - periyot_ortalamasi
+                yuzde_deg = (fark / periyot_ortalamasi) * 100 if periyot_ortalamasi > 0 else 0
+                
+                # Ekrana basma (Metric ismi değişti)
+                st.metric(
+                    f"{secilen_periyot} Ortalamasına Göre", 
+                    f"{int(fark):,.0f} TL".replace(",", "."), 
+                    f"%{yuzde_deg:.2f}"
+                )
+                st.caption(f"ℹ️ Bugün, son {secilen_periyot} içindeki genel varlık ortalamanızdan ne kadar saptığınızı görüyorsunuz.")
         else:
             st.info("Kıyaslama yapabilmek için en az 2 farklı günlük kayıt gereklidir.")
 
