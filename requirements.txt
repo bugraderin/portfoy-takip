@@ -6,3 +6,4 @@ plotly
 yfinance
 requests
 tefas-crawler
+beautifulsoup4
