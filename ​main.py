@@ -23,9 +23,10 @@ try:
     ws_ai_kaynak = spreadsheet.worksheet("AI") # Yeni oluşturduğun sayfa
 
     # Gemini AI Yapılandırması
+    if "GEMINI_API_KEY" in st.secrets:
     genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
-except Exception as e:
-    st.error(f"Bağlantı Hatası: {e}"); st.stop()
+else:
+    st.warning("⚠️ GEMINI_API_KEY bulunamadı. Lütfen Secrets ayarlarına ekleyin.")
 
 # --- FONKSİYONLAR ---
 def get_son_bakiye_ve_limit():
