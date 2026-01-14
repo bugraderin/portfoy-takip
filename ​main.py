@@ -150,36 +150,43 @@ with tab_ayrilan:
             ws_ayrilan.append_row([datetime.now().strftime('%Y-%m-%d'), yeni_l, yeni_l], value_input_option='RAW')
             st.success("Bütçe güncellendi."); st.rerun()
 
-# --- SEKME 5: AI ANALİST (ChatGPT Versiyonu) ---
+import requests # En üste eklemeyi unutma
+import json
+
+# --- SEKME 5: AI ANALİST ---
 with tab_ai:
-    st.header("🤖 ChatGPT Stratejik Danışman")
+    st.header("🤖 Ücretsiz AI Analist (Gemini Direct)")
     
-    if st.button("📊 Verileri ve Makaleleri Analiz Et"):
-        if "OPENAI_API_KEY" not in st.secrets:
-            st.error("Lütfen Secrets kısmına OPENAI_API_KEY ekleyin.")
+    if st.button("📊 Verileri Analiz Et"):
+        api_key = st.secrets.get("GEMINI_API_KEY")
+        if not api_key:
+            st.error("Secrets kısmında GEMINI_API_KEY bulunamadı.")
         else:
             try:
-                # 1. Sheets'ten verileri çek
+                # Verileri Hazırla
                 notlar_list = ws_ai_kaynak.col_values(1)[1:]
                 egitim_notlari = " ".join([str(n) for n in notlar_list if n])
-                
-                # 2. Portföy özetini hazırla
                 varlik_ozeti = ", ".join([f"{e}: {int(guncel.get(e,0))} TL" for e in enstrumanlar if guncel.get(e,0) > 0])
                 
-                # 3. OpenAI Bağlantısı
-                client = openai.OpenAI(api_key=st.secrets["OPENAI_API_KEY"])
+                prompt = f"Finans danışmanı olarak analiz yap. Notlar: {egitim_notlari}. Portföy: {varlik_ozeti}. Toplam: {int(guncel['Toplam'])} TL."
+
+                # Doğrudan API URL'si (Kütüphane kullanmıyoruz)
+                url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={api_key}"
                 
-                with st.spinner("ChatGPT analiz yapıyor..."):
-                    response = client.chat.completions.create(
-                        model="gpt-3.5-turbo", # Veya "gpt-4"
-                        messages=[
-                            {"role": "system", "content": f"Sen uzman bir finansçısın. Şu kaynak notlara göre analiz yap: {egitim_notlari}"},
-                            {"role": "user", "content": f"Varlıklarım: {varlik_ozeti}. Toplam: {int(guncel['Toplam'])} TL. Bütçe: {int(kalan_bakiye)} TL. Stratejik yorum yap."}
-                        ]
-                    )
+                payload = {
+                    "contents": [{"parts": [{"text": prompt}]}]
+                }
+                
+                with st.spinner("Analiz ediliyor..."):
+                    response = requests.post(url, json=payload)
+                    result = response.json()
                     
-                    st.markdown("### 📝 ChatGPT Analiz Raporu")
-                    st.info(response.choices[0].message.content)
-                    
+                    # Yanıtı ekrana yazdır
+                    if "candidates" in result:
+                        text = result["candidates"][0]["content"]["parts"][0]["text"]
+                        st.info(text)
+                    else:
+                        st.error(f"API Yanıt Vermedi: {result}")
+                        
             except Exception as e:
-                st.error(f"ChatGPT Hatası: {e}")
+                st.error(f"Bağlantı Hatası: {e}")
