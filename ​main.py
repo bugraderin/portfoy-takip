@@ -161,35 +161,41 @@ with tab_ai:
     st.header("🤖 AI Stratejik Danışman")
     if st.button("📊 Verileri ve Makaleleri Analiz Et"):
         try:
-            # Sheets'ten makale notlarını çek
+            # AI Sayfasındaki makale/notları çek
             notlar_list = ws_ai_kaynak.col_values(1)[1:]
             egitim_notlari = " ".join([str(n) for n in notlar_list if n])
             
-            # Modeli en sade haliyle tanımlıyoruz
-            model = genai.GenerativeModel(model_name='gemini-1.5-flash')
+            # --- MODEL İSMİNİ GEMINI-PRO OLARAK GÜNCELLEDİK ---
+            # gemini-pro, v1beta ve standart v1 sürümlerinde en stabil çalışan modeldir.
+            model = genai.GenerativeModel(model_name='gemini-pro')
             
             # Veri Özetini Hazırla
             varlik_ozeti = ", ".join([f"{e}: {int(guncel.get(e,0))} TL" for e in enstrumanlar if guncel.get(e,0) > 0])
             
-            # Talimatları (System Instruction) doğrudan promptun içine ekliyoruz
+            # Talimat ve veriyi tek bir metin (Prompt) olarak birleştiriyoruz
             prompt = f"""
-            TALİMAT: Sen Düzey 3 uzman bir finans danışmanısın. 
-            Aşağıdaki makale notlarını temel alarak kullanıcıya stratejik analiz yap:
-            ---
-            MAKALE NOTLARI: {egitim_notlari}
-            ---
-            KULLANICI VERİLERİ:
-            Varlıklar: {varlik_ozeti}
-            Toplam Portföy: {int(guncel['Toplam'])} TL
-            Kalan Bütçe: {int(kalan_bakiye)} TL
+            Sen Düzey 3 uzman bir finans danışmanısın. 
+            Aşağıdaki makale notlarını ve kullanıcı verilerini analiz et:
             
-            Analizini 3 kısa ve öz madde halinde sun.
+            KAYNAK NOTLAR: {egitim_notlari}
+            
+            KULLANICI PORTFÖYÜ: {varlik_ozeti}
+            TOPLAM VARLIK: {int(guncel['Toplam'])} TL
+            KALAN BÜTÇE: {int(kalan_bakiye)} TL
+            
+            Lütfen bu verilere dayanarak kısa ve öz bir stratejik analiz yap.
             """
             
-            with st.spinner("Analiz ediliyor..."):
+            with st.spinner("Yapay zeka analiz raporunu hazırlıyor..."):
+                # generate_content çağrısını yapıyoruz
                 response = model.generate_content(prompt)
-                st.markdown("### 📝 Stratejik Analiz Raporu")
-                st.info(response.text)
                 
+                if response.text:
+                    st.markdown("### 📝 Stratejik Analiz Raporu")
+                    st.info(response.text)
+                else:
+                    st.warning("Yapay zeka bir yanıt üretemedi, lütfen tekrar deneyin.")
+                    
         except Exception as e:
-            st.error(f"Hata: {e}")
+            st.error(f"Bağlantı Hatası: {e}")
+            st.info("İpucu: Eğer hala 404 alıyorsanız, API anahtarınızın Google AI Studio'da aktif olduğundan emin olun.")
