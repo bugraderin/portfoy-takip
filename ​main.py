@@ -52,8 +52,6 @@ with tab_portfoy:
 
     with st.sidebar:
         st.header("📥 Portföy Güncelle")
-        
-        # 1. VERİYİ SİDEBAR İÇİNDE ÇEKİYORUZ (Hata almamak için)
         try:
             temp_data = ws_portfoy.get_all_records()
             if temp_data:
@@ -67,7 +65,6 @@ with tab_portfoy:
         with st.form("p_form", clear_on_submit=True):
             p_in = {}
             for e in enstrumanlar:
-                # Son değeri bulup ipucu olarak göster
                 try:
                     son_val = float(son_kayitlar.get(e, 0))
                 except:
@@ -81,10 +78,7 @@ with tab_portfoy:
                     help=f"Son Kayıtlı Değer: {int(son_val):,.0f} TL"
                 )
 
-           #  Kayıt Butonu #
-            
             if st.form_submit_button("🚀 Kaydet"):
-                # 1. Yeni satır verisini hazırlıyoruz
                 yeni_satir = [datetime.now().strftime('%Y-%m-%d')]
                 for e in enstrumanlar:
                     if p_in[e] is not None:
@@ -92,24 +86,18 @@ with tab_portfoy:
                     else:
                         yeni_satir.append(float(son_kayitlar.get(e, 0)))
                 
-                # 2. AYNI GÜN KONTROLÜ
                 bugun = datetime.now().strftime('%Y-%m-%d')
-                tarihler = ws_portfoy.col_values(1) # A sütunundaki tüm tarihleri çeker
+                tarihler = ws_portfoy.col_values(1)
                 
                 if bugun in tarihler:
-                    # Eğer bugün zaten listede varsa, o satırın numarasını bul (index 0'dan başlar, o yüzden +1)
                     satir_no = tarihler.index(bugun) + 1
-                    # A'dan I'ya kadar olan hücreleri bu yeni liste ile güncelle
-                    # Not: [yeni_satir] şeklinde liste içinde liste göndermeliyiz
                     ws_portfoy.update(f"A{satir_no}:I{satir_no}", [yeni_satir])
                     st.success(f"📅 {bugun} tarihli kaydınız güncellendi!")
                 else:
-                    # Bugün daha önce hiç kayıt atılmamışsa yeni satır ekle
                     ws_portfoy.append_row(yeni_satir, value_input_option='RAW')
                     st.success("✅ Yeni gün kaydı başarıyla oluşturuldu!")
                 
                 st.rerun()
-              #  Kayıt Butonu #
 
     data_p = ws_portfoy.get_all_records()
     if data_p:
@@ -122,10 +110,8 @@ with tab_portfoy:
         guncel = df_p.iloc[-1]
         toplam_tl = guncel['Toplam']
 
-        # TOPLAM VARLIK (Değişim metriği kaldırıldı)
         st.metric("Toplam Varlık (TL)", f"{int(toplam_tl):,.0f}".replace(",", "."))
 
-        # SEÇENEKLİ DÖNEMSEL DEĞİŞİM (Akıllı Mantık)
         st.write("### ⏱️ Değişim Analizi")
         periyotlar = {"1 Gün": 1, "1 Ay": 30, "3 Ay": 90, "6 Ay": 180, "1 Yıl": 365}
         secilen_periyot = st.selectbox("Analiz Periyodu Seçin", list(periyotlar.keys()))
@@ -133,41 +119,36 @@ with tab_portfoy:
         gun_farki = periyotlar[secilen_periyot]
         hedef_tarih = guncel['tarih'] - timedelta(days=gun_farki)
         
-        # Seçilen günden önceki en yakın kaydı bul, yoksa mevcut en eski kaydı al
         gecmis_data = df_p[df_p['tarih'] <= hedef_tarih]
         if gecmis_data.empty and len(df_p) > 1:
-            gecmis_data = df_p.head(1) # Elindeki en eski kaydı baz al
-            st.caption(f"ℹ️ Seçilen periyot için yeterli geçmiş veri olmadığından, sistemdeki en eski kayıt ({gecmis_data.iloc[0]['tarih'].strftime('%d.%m.%Y')}) baz alındı.")
+            gecmis_data = df_p.head(1)
+            st.caption(f"ℹ️ En eski kayıt ({gecmis_data.iloc[0]['tarih'].strftime('%d.%m.%Y')}) baz alındı.")
         
         if not gecmis_data.empty and len(df_p) > 1:
             eski_deger = gecmis_data.iloc[-1]['Toplam']
             if eski_deger > 0:
                 fark = toplam_tl - eski_deger
-                yuzde = (fark / eski_deger) * 100
-                st.metric(f"{secilen_periyot} Değişimi", f"{int(fark):,.0f} TL".replace(",", "."), f"%{yuzde:.2f}")
+                yuzde_deg = (fark / eski_deger) * 100
+                st.metric(f"{secilen_periyot} Değişimi", f"{int(fark):,.0f} TL".replace(",", "."), f"%{yuzde_deg:.2f}")
         else:
             st.info("Kıyaslama yapabilmek için en az 2 farklı günlük kayıt gereklidir.")
 
         st.divider()
-        # Enstrüman metrikleri
+        # --- Enstrüman Metrikleri Bölümü ---
         onceki = df_p.iloc[-2] if len(df_p) > 1 else guncel
         varlik_data = []
         for e in enstrumanlar:
             if guncel[e] > 0:
                 degisim = guncel[e] - onceki[e]
-                
-                # --- Değişim Yüzdesi ---
                 if onceki[e] > 0:
                     yuzde = (degisim / onceki[e]) * 100
                 elif onceki[e] == 0 and guncel[e] > 0:
                     yuzde = 100.0
                 else:
                     yuzde = 0.0
-                # -------------------------------------------
                 
                 varlik_data.append({'Cins': e, 'Tutar': guncel[e], 'Yüzde': yuzde, 'Icon': enstruman_bilgi[e]})
-      
-                varlik_data.append({'Cins': e, 'Tutar': guncel[e], 'Yüzde': yuzde, 'Icon': enstruman_bilgi[e]})
+        
         df_v = pd.DataFrame(varlik_data).sort_values(by="Tutar", ascending=False)
         cols = st.columns(4)
         for i, (index, row) in enumerate(df_v.iterrows()):
