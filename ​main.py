@@ -159,34 +159,36 @@ with tab_gelir:
                 st.plotly_chart(fig_g_pie, use_container_width=True)
             
             with col2:
-                # 1. Grafiği Oluştur (Hacimli Alan Grafiği + Noktalar)
+                # 1. Grafiği Oluştur
                 fig_g_area = px.area(df_g, x='tarih', y='toplam', markers=True, title="Gelir Akışı Seyri")
                 
-                # 2. Çizgi ve Nokta Stilini Ayarla
+                # 2. Hata Veren Kısmın Düzeltilmiş Hali (Sözlük Yapısı Kullanarak)
                 fig_g_area.update_traces(
-                    line_shape='spline', # Yumuşak kavisli çizgi
-                    line_color='#2ecc71', # Gelir için yeşil renk
-                    fillcolor='rgba(46, 204, 113, 0.2)', # Şeffaf yeşil dolgu
-                    marker=dict(size=8, borderwidth=2) # Noktaları (nokta nokta görünümü) daha belirgin yapar
+                    line=dict(shape='spline', color='#2ecc71'), # Çizgi stili ve rengi bir arada
+                    fillcolor='rgba(46, 204, 113, 0.2)',        # Dolgu rengi
+                    marker=dict(size=10, symbol='circle', line=dict(width=2, color='white')) # Belirgin noktalar
                 )
                 
-                # 3. X Ekseni Tarih Formatı (Gün Ay)
+                # 3. X Ekseni Formatı
                 fig_g_area.update_xaxes(
                     tickvals=df_g['tarih'], 
                     ticktext=[f"{d.day} {TR_AYLAR_KISA.get(d.strftime('%b'))}" for d in df_g['tarih']]
                 )
                 
-                # 4. Sağa Sola Kaydırma Modunu Aktif Et
-                fig_g_area.update_layout(dragmode='pan')
+                # 4. Sağa Sola Kaydırma (Pan) Modu
+                fig_g_area.update_layout(
+                    dragmode='pan',
+                    hovermode='x unified' # Mouse ile üzerine gelince bilgiyi şık gösterir
+                )
                 
-                # 5. Sadece İstediğin Kontrolleri Bırakan Yapı
+                # 5. Gereksiz Butonları Kaldıran Config
                 st.plotly_chart(fig_g_area, use_container_width=True, config={
-                    'scrollZoom': True,  # Mouse tekerleği ile zoom
-                    'displaylogo': False, # Plotly logosunu gizle
+                    'scrollZoom': True,
+                    'displaylogo': False,
                     'modeBarButtonsToRemove': [
                         'zoom2d', 'pan2d', 'zoomIn2d', 'zoomOut2d', 
-                        'resetScale2d', 'autoScale2d', 'select2d', 'lasso2d', 'toggleSpikelines'
-                    ] # Sağ üstteki tüm kalabalık butonları temizler
+                        'resetScale2d', 'autoScale2d', 'select2d', 'lasso2d'
+                    ]
                 })
 
 # --- SEKME 3: GİDERLER (BİRLEŞTİRİLMİŞ) ---
