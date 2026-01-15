@@ -153,20 +153,77 @@ with tab_gelir:
                 fig_g_area.update_xaxes(tickvals=df_g['tarih'], ticktext=[f"{d.day} {TR_AYLAR_KISA.get(d.strftime('%b'))}" for d in df_g['tarih']])
                 st.plotly_chart(fig_g_area, use_container_width=True)
 
-# --- SEKME 3: GİDERLER ---
+# --- SEKME 3: GİDERLER (BİRLEŞTİRİLMİŞ) ---
 with tab_gider:
+    # 1. Mevcut Bakiye Bilgisini Göster
     kalan_bakiye, limit = get_son_bakiye_ve_limit()
     st.info(f"💰 Güncel Kalan Bütçe: **{int(kalan_bakiye):,.0f} TL**")
-    # ... (Gider formu ve pasta grafiği - öncekiyle aynı) ...
-    # (Hızlıca pasta grafiğini de buraya ekliyorum)
-    data_gi = ws_gider.get_all_records()
-    if data_gi:
-        df_gi = pd.DataFrame(data_gi)
-        df_gi.columns = [c.lower() for c in df_gi.columns]
-        harcama_ozet = df_gi.drop(columns=['tarih'], errors='ignore').sum()
-        harcama_ozet = harcama_ozet[harcama_ozet > 0]
-        fig_gi_pie = px.pie(values=harcama_ozet.values, names=harcama_ozet.index, title="Harcama Dağılımı", hole=0.3)
-        st.plotly_chart(fig_gi_pie, use_container_width=True)
+    
+    # 2. Harcama Giriş Formu
+    gider_ikonlari = {
+        "Genel Giderler": "📦", "Market": "🛒", "Kira": "🏠", 
+        "Aidat": "🏢", "Kredi Kartı": "💳", "Kredi": "🏦", 
+        "Eğitim": "🎓", "Araba": "🚗", "Seyahat": "✈️", 
+        "Sağlık": "🏥", "Çocuk": "👶", "Toplu Taşıma": "🚌"
+    }
+    
+    with st.form("gi_form", clear_on_submit=True):
+        st.write("### 📝 Yeni Harcama Gir")
+        cols = st.columns(3)
+        # Form inputlarını oluştur
+        inputs = {isim: cols[i % 3].number_input(f"{ikon} {isim}", min_value=0, value=None) 
+                 for i, (isim, ikon) in enumerate(gider_ikonlari.items())}
+        
+        submit_gider = st.form_submit_button("✅ Harcamayı Kaydet")
+        
+        if submit_gider:
+            toplam_h = sum([v or 0 for v in inputs.values()])
+            if toplam_h > 0:
+                yeni_kalan = kalan_bakiye - toplam_h
+                
+                # Giderler sayfasına satır ekle
+                yeni_gider_satiri = [datetime.now().strftime('%Y-%m-%d')] + [inputs[k] or 0 for k in gider_ikonlari.keys()]
+                ws_gider.append_row(yeni_gider_satiri, value_input_option='RAW')
+                
+                # Bütçe/Ayrılan Tutar sayfasını güncelle
+                ws_ayrilan.append_row([datetime.now().strftime('%Y-%m-%d'), limit, yeni_kalan], value_input_option='RAW')
+                
+                st.success(f"Harcama kaydedildi! Yeni Kalan: {int(yeni_kalan)} TL")
+                st.rerun()
+            else:
+                st.warning("Lütfen en az bir harcama kalemi giriniz.")
+
+    st.divider()
+
+    # 3. Harcama Analiz Grafiği (Pasta Grafiği)
+    st.write("### 📊 Harcama Dağılımı")
+    try:
+        data_gi = ws_gider.get_all_records()
+        if data_gi:
+            df_gi = pd.DataFrame(data_gi)
+            # Sütun isimlerini küçük harfe çevirerek standardize et
+            df_gi.columns = [c.lower() for c in df_gi.columns]
+            
+            # 'tarih' sütunu haricindeki tüm sütunları topla (kategoriler)
+            harcama_ozet = df_gi.drop(columns=['tarih'], errors='ignore').sum()
+            # Sadece harcama yapılmış (0'dan büyük) kategorileri filtrele
+            harcama_ozet = harcama_ozet[harcama_ozet > 0]
+            
+            if not harcama_ozet.empty:
+                fig_gi_pie = px.pie(
+                    values=harcama_ozet.values, 
+                    names=harcama_ozet.index.str.title(), # Baş harfleri büyük yap
+                    hole=0.4,
+                    color_discrete_sequence=px.colors.qualitative.Pastel
+                )
+                fig_gi_pie.update_traces(textinfo='percent+label')
+                st.plotly_chart(fig_gi_pie, use_container_width=True)
+            else:
+                st.info("Henüz grafik oluşturulacak kadar harcama verisi yok.")
+        else:
+            st.info("Henüz kaydedilmiş harcama bulunmuyor.")
+    except Exception as e:
+        st.error(f"Grafik yüklenirken hata oluştu: {e}")
 
 # --- SEKME 4: BÜTÇE ---
 with tab_ayrilan:
