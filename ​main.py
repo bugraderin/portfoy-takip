@@ -159,36 +159,32 @@ with tab_gelir:
                 st.plotly_chart(fig_g_pie, use_container_width=True)
             
             with col2:
-                # 1. Grafiği Oluştur
+                # Grafiği oluştur
                 fig_g_area = px.area(df_g, x='tarih', y='toplam', markers=True, title="Gelir Akışı Seyri")
                 
-                # 2. Hata Veren Kısmın Düzeltilmiş Hali (Sözlük Yapısı Kullanarak)
+                # Çizgi ve Nokta Ayarları
                 fig_g_area.update_traces(
-                    line=dict(shape='spline', color='#2ecc71'), # Çizgi stili ve rengi bir arada
-                    fillcolor='rgba(46, 204, 113, 0.2)',        # Dolgu rengi
-                    marker=dict(size=10, symbol='circle', line=dict(width=2, color='white')) # Belirgin noktalar
+                    line=dict(shape='spline', color='#2ecc71', width=3),
+                    fillcolor='rgba(46, 204, 113, 0.2)',
+                    marker=dict(size=10, symbol='circle', line=dict(width=2, color='white')),
+                    connectgaps=True
                 )
                 
-                # 3. X Ekseni Formatı
-                fig_g_area.update_xaxes(
-                    tickvals=df_g['tarih'], 
-                    ticktext=[f"{d.day} {TR_AYLAR_KISA.get(d.strftime('%b'))}" for d in df_g['tarih']]
-                )
-                
-                # 4. Sağa Sola Kaydırma (Pan) Modu
+                # Layout ve Kontroller
                 fig_g_area.update_layout(
                     dragmode='pan',
-                    hovermode='x unified' # Mouse ile üzerine gelince bilgiyi şık gösterir
+                    hovermode='x unified',
+                    showlegend=False
                 )
                 
-                # 5. Gereksiz Butonları Kaldıran Config
+                # X Ekseni Türkçe Format
+                fig_g_area.update_xaxes(tickvals=df_g['tarih'], ticktext=[f"{d.day} {TR_AYLAR_KISA.get(d.strftime('%b'))}" for d in df_g['tarih']])
+                
+                # Temiz Grafik Config
                 st.plotly_chart(fig_g_area, use_container_width=True, config={
                     'scrollZoom': True,
                     'displaylogo': False,
-                    'modeBarButtonsToRemove': [
-                        'zoom2d', 'pan2d', 'zoomIn2d', 'zoomOut2d', 
-                        'resetScale2d', 'autoScale2d', 'select2d', 'lasso2d'
-                    ]
+                    'modeBarButtonsToRemove': ['zoom2d', 'pan2d', 'select2d', 'lasso2d', 'zoomIn2d', 'zoomOut2d', 'autoScale2d', 'resetScale2d']
                 })
 
 # --- SEKME 3: GİDERLER (BİRLEŞTİRİLMİŞ) ---
