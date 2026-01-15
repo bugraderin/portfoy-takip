@@ -159,11 +159,35 @@ with tab_gelir:
                 st.plotly_chart(fig_g_pie, use_container_width=True)
             
             with col2:
-                # --- GELİR AKIŞI İÇİN DE AREA CHART ---
+                # 1. Grafiği Oluştur (Hacimli Alan Grafiği + Noktalar)
                 fig_g_area = px.area(df_g, x='tarih', y='toplam', markers=True, title="Gelir Akışı Seyri")
-                fig_g_area.update_traces(line_shape='spline', line_color='#2ecc71', fillcolor='rgba(46, 204, 113, 0.2)')
-                fig_g_area.update_xaxes(tickvals=df_g['tarih'], ticktext=[f"{d.day} {TR_AYLAR_KISA.get(d.strftime('%b'))}" for d in df_g['tarih']])
-                st.plotly_chart(fig_g_area, use_container_width=True)
+                
+                # 2. Çizgi ve Nokta Stilini Ayarla
+                fig_g_area.update_traces(
+                    line_shape='spline', # Yumuşak kavisli çizgi
+                    line_color='#2ecc71', # Gelir için yeşil renk
+                    fillcolor='rgba(46, 204, 113, 0.2)', # Şeffaf yeşil dolgu
+                    marker=dict(size=8, borderwidth=2) # Noktaları (nokta nokta görünümü) daha belirgin yapar
+                )
+                
+                # 3. X Ekseni Tarih Formatı (Gün Ay)
+                fig_g_area.update_xaxes(
+                    tickvals=df_g['tarih'], 
+                    ticktext=[f"{d.day} {TR_AYLAR_KISA.get(d.strftime('%b'))}" for d in df_g['tarih']]
+                )
+                
+                # 4. Sağa Sola Kaydırma Modunu Aktif Et
+                fig_g_area.update_layout(dragmode='pan')
+                
+                # 5. Sadece İstediğin Kontrolleri Bırakan Yapı
+                st.plotly_chart(fig_g_area, use_container_width=True, config={
+                    'scrollZoom': True,  # Mouse tekerleği ile zoom
+                    'displaylogo': False, # Plotly logosunu gizle
+                    'modeBarButtonsToRemove': [
+                        'zoom2d', 'pan2d', 'zoomIn2d', 'zoomOut2d', 
+                        'resetScale2d', 'autoScale2d', 'select2d', 'lasso2d', 'toggleSpikelines'
+                    ] # Sağ üstteki tüm kalabalık butonları temizler
+                })
 
 # --- SEKME 3: GİDERLER (BİRLEŞTİRİLMİŞ) ---
 with tab_gider:
