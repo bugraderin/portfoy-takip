@@ -159,32 +159,42 @@ with tab_gelir:
                 st.plotly_chart(fig_g_pie, use_container_width=True)
             
             with col2:
-                # Grafiği oluştur
-                fig_g_area = px.area(df_g, x='tarih', y='toplam', markers=True, title="Gelir Akışı Seyri")
+                # Dikey çizgiyi engellemek için: Aynı güne ait verileri tek satıra indir
+                df_g_clean = df_g.groupby('tarih')['toplam'].sum().reset_index()
+
+                # Grafiği oluştur (image_6af9d8 stilinde temiz çizgi)
+                fig_g = px.line(df_g_clean, x='tarih', y='toplam', markers=True, title="Gelir Akışı Seyri")
                 
-                # Çizgi ve Nokta Ayarları
-                fig_g_area.update_traces(
-                    line=dict(shape='spline', color='#2ecc71', width=3),
-                    fillcolor='rgba(46, 204, 113, 0.2)',
-                    marker=dict(size=10, symbol='circle', line=dict(width=2, color='white')),
-                    connectgaps=True
+                # Çizgi ve Nokta Tasarımı
+                fig_g.update_traces(
+                    line=dict(color='#007bff', width=3), # Modern mavi tonu
+                    marker=dict(size=8, symbol='circle', color='#007bff', line=dict(width=1, color='white'))
                 )
                 
-                # Layout ve Kontroller
-                fig_g_area.update_layout(
+                # Görseldeki gibi temiz görünüm için Layout ayarları
+                fig_g.update_layout(
                     dragmode='pan',
                     hovermode='x unified',
-                    showlegend=False
+                    plot_bgcolor='rgba(0,0,0,0)', # Arka planı temizle
+                    paper_bgcolor='rgba(0,0,0,0)',
+                    yaxis=dict(gridcolor='#f0f0f0', title=""), # Hafif ızgara çizgileri
+                    xaxis=dict(showgrid=False, title="")
                 )
                 
-                # X Ekseni Türkçe Format
-                fig_g_area.update_xaxes(tickvals=df_g['tarih'], ticktext=[f"{d.day} {TR_AYLAR_KISA.get(d.strftime('%b'))}" for d in df_g['tarih']])
+                # X Ekseni Türkçe Tarih (Gün Ay)
+                fig_g.update_xaxes(
+                    tickvals=df_g_clean['tarih'], 
+                    ticktext=[f"{d.day} {TR_AYLAR_KISA.get(d.strftime('%b'))}" for d in df_g_clean['tarih']]
+                )
                 
-                # Temiz Grafik Config
-                st.plotly_chart(fig_g_area, use_container_width=True, config={
+                # Gereksiz tüm butonları kaldır (image_6ae390'daki kırmızı alan temizliği)
+                st.plotly_chart(fig_g, use_container_width=True, config={
                     'scrollZoom': True,
                     'displaylogo': False,
-                    'modeBarButtonsToRemove': ['zoom2d', 'pan2d', 'select2d', 'lasso2d', 'zoomIn2d', 'zoomOut2d', 'autoScale2d', 'resetScale2d']
+                    'modeBarButtonsToRemove': [
+                        'zoom2d', 'pan2d', 'select2d', 'lasso2d', 'zoomIn2d', 
+                        'zoomOut2d', 'autoScale2d', 'resetScale2d', 'toggleSpikelines'
+                    ]
                 })
 
 # --- SEKME 3: GİDERLER (BİRLEŞTİRİLMİŞ) ---
