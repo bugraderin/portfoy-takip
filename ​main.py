@@ -43,6 +43,34 @@ def get_son_bakiye_ve_limit():
     except:
         return 0.0, 0.0
 
+
+with sub_tab2:
+    df_p['tarih_tr'] = (
+        df_p['tarih'].dt.day.astype(str) + " " +
+        df_p['tarih'].dt.month.map(TR_AYLAR_TAM)
+    )
+
+    fig_l = px.line(
+        df_p,
+        x='tarih',
+        y='Toplam',
+        markers=True,
+        title="Toplam Varlık Seyri"
+    )
+
+    fig_l.update_xaxes(
+        tickvals=df_p['tarih'],
+        ticktext=[f"{d.day} {TR_AYLAR_KISA.get(d.strftime('%b'))}" for d in df_p['tarih']]
+    )
+
+    st.plotly_chart(
+        fig_l,
+        use_container_width=True,
+        config={
+            "displayModeBar": False,   # ⛔ üst ikonların tamamı gider
+           
+
+
 # --- SEKMELER ---
 tab_portfoy, tab_gelir, tab_gider, tab_ayrilan = st.tabs(["📊 Portföy", "💵 Gelirler", "💸 Giderler", "🛡️ Bütçe"])
 
