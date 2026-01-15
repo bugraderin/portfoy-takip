@@ -44,33 +44,6 @@ def get_son_bakiye_ve_limit():
         return 0.0, 0.0
 
 
-with sub_tab2:
-    df_p['tarih_tr'] = (
-        df_p['tarih'].dt.day.astype(str) + " " +
-        df_p['tarih'].dt.month.map(TR_AYLAR_TAM)
-    )
-
-    fig_l = px.line(
-        df_p,
-        x='tarih',
-        y='Toplam',
-        markers=True,
-        title="Toplam Varlık Seyri"
-    )
-
-    fig_l.update_xaxes(
-        tickvals=df_p['tarih'],
-        ticktext=[f"{d.day} {TR_AYLAR_KISA.get(d.strftime('%b'))}" for d in df_p['tarih']]
-    )
-
-    st.plotly_chart(
-        fig_l,
-        use_container_width=True,
-        config={
-            "displayModeBar": False,   # ⛔ üst ikonların tamamı gider
-           
-
-
 # --- SEKMELER ---
 tab_portfoy, tab_gelir, tab_gider, tab_ayrilan = st.tabs(["📊 Portföy", "💵 Gelirler", "💸 Giderler", "🛡️ Bütçe"])
 
@@ -140,11 +113,22 @@ with tab_portfoy:
             st.plotly_chart(fig_p, use_container_width=True)
         
         with sub_tab2:
-            # --- SAĞA DOĞRU BÜYÜME (AREA CHART) ---
+            # Önce grafiği oluşturuyoruz (Area veya Line fark etmez)
             fig_l = px.area(df_p, x='tarih', y='Toplam', markers=True, title="Toplam Varlık Seyri")
             fig_l.update_traces(line_shape='spline', line_color='#3498db', fillcolor='rgba(52, 152, 219, 0.2)')
             fig_l.update_xaxes(tickvals=df_p['tarih'], ticktext=[f"{d.day} {TR_AYLAR_KISA.get(d.strftime('%b'))}" for d in df_p['tarih']])
-            st.plotly_chart(fig_l, use_container_width=True)
+            
+            # --- YENİ DÜZENLEME: SADELEŞTİRİLMİŞ KONTROLLER ---
+            fig_l.update_layout(dragmode='pan') # Tıklayıp sürükleyince sağa sola kaysın
+            
+            st.plotly_chart(fig_l, use_container_width=True, config={
+                'scrollZoom': True,  # Mouse tekerleği ile yakınlaştırma aktif
+                'displaylogo': False, # Plotly logosunu kaldır
+                'modeBarButtonsToRemove': [
+                    'zoom2d', 'pan2d', 'zoomIn2d', 'zoomOut2d', 
+                    'resetScale2d', 'autoScale2d', 'select2d', 'lasso2d'
+                ] # İstediğin butonları ve fazlalıkları kaldırdık
+            })
 
 # --- SEKME 2: GELİRLER ---
 with tab_gelir:
