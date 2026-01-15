@@ -20,7 +20,7 @@ try:
     creds = Credentials.from_service_account_info(st.secrets["gcp_service_account"], scopes=scope)
     client = gspread.authorize(creds)
     spreadsheet = client.open("portfoyum")
-    ws_portfoy = spreadsheet.worksheet("Veri Sayfası")
+    ws_portfoy = spreadsheet.worksheet("Sayfa5")
     ws_gelir = spreadsheet.worksheet("Gelirler")
     ws_gider = spreadsheet.worksheet("Giderler")
     ws_ayrilan = spreadsheet.worksheet("Gidere Ayrılan Tutar")
