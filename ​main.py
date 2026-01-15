@@ -66,9 +66,10 @@ with tab_portfoy:
         with st.form("p_form", clear_on_submit=True):
             p_in = {}
             for e in enstrumanlar:
-                son_val = float(son_kayitlar.get(e, 0)) if e in son_kayitlar else 0.0
-                p_in[e] = st.number_input(f"{enstruman_bilgi[e]} {e}", min_value=0.0, value=None, format="%.f", help=f"Son: {int(son_val):,}")
-            
+                try: son_val = float(son_kayitlar.get(e, 0))
+                except: son_val = 0.0
+                p_in[e] = st.number_input(f"{enstruman_bilgi[e]} {e}", min_value=0.0, value=None, format="%.f", help=f"Son Değer: {int(son_val):,.0f} TL")
+
             if st.form_submit_button("🚀 Kaydet"):
                 yeni_satir = [datetime.now().strftime('%Y-%m-%d')]
                 for e in enstrumanlar:
@@ -80,22 +81,76 @@ with tab_portfoy:
                 if bugun in tarihler:
                     satir_no = tarihler.index(bugun) + 1
                     ws_portfoy.update(f"A{satir_no}:I{satir_no}", [yeni_satir])
+                    st.success("📅 Güncellendi!")
                 else:
-                    ws_portfoy.append_row(yeni_satir)
-                st.success("Kaydedildi!"); st.rerun()
+                    ws_portfoy.append_row(yeni_satir, value_input_option='RAW')
+                    st.success("✅ Kaydedildi!")
+                st.rerun()
 
     data_p = ws_portfoy.get_all_records()
     if data_p:
         df_p = pd.DataFrame(data_p)
-        df_p['tarih'] = pd.to_datetime(df_p['tarih'])
+        df_p['tarih'] = pd.to_datetime(df_p['tarih'], errors='coerce')
+        df_p = df_p.dropna(subset=['tarih']).sort_values('tarih')
+        for col in enstrumanlar: df_p[col] = pd.to_numeric(df_p[col], errors='coerce').fillna(0)
         df_p['Toplam'] = df_p[enstrumanlar].sum(axis=1)
-        guncel = df_p.iloc[-1]
-
-        st.metric("Toplam Varlık", f"{int(guncel['Toplam']):,.0f} TL".replace(",", "."))
         
-        # Grafik
-        fig_p = px.pie(df_p.iloc[-1][enstrumanlar].reset_index(), values=df_p.iloc[-1].name, names='index', hole=0.4, title="Varlık Dağılımı")
-        st.plotly_chart(fig_p, use_container_width=True)
+        guncel = df_p.iloc[-1]
+        st.metric("Toplam Varlık (TL)", f"{int(guncel['Toplam']):,.0f}".replace(",", "."))
+
+        # --- ⏱️ DEĞİŞİM ANALİZİ  ---
+        st.write("### ⏱️ Değişim Analizi")
+        periyotlar = {"1 Gün": 1, "1 Ay": 30, "3 Ay": 90, "6 Ay": 180, "1 Yıl": 365}
+        secilen_periyot = st.selectbox("Analiz Periyodu Seçin", list(periyotlar.keys()))
+        
+        hedef_tarih = guncel['tarih'] - timedelta(days=periyotlar[secilen_periyot])
+        
+        if not df_p.empty and len(df_p) > 1:
+            guncel_deger = float(guncel['Toplam'])
+            if secilen_periyot == "1 Gün":
+                baz_deger = float(df_p.iloc[-2]['Toplam'])
+                label_text = "Düne Göre Değişim"
+            else:
+                mask = (df_p['tarih'] > hedef_tarih) & (df_p['tarih'] <= guncel['tarih'])
+                baz_deger = float(df_p.loc[mask, 'Toplam'].mean()) if not df_p.loc[mask].empty else 0
+                label_text = f"{secilen_periyot} Ortalamasına Göre"
+
+            if baz_deger > 0:
+                fark = guncel_deger - baz_deger
+                yuzde_deg = (fark / baz_deger) * 100
+                # Eksi işaretinin en başa gelmesi için % sona alındı
+                st.metric(label_text, f"{int(fark):,.0f} TL".replace(",", "."), delta=f"{yuzde_deg:.2f}%")
+            
+            if secilen_periyot != "1 Gün":
+                st.caption(f"ℹ️ Bugün, son {secilen_periyot} içindeki genel varlık ortalamanızdan ne kadar saptığınızı görüyorsunuz.")
+
+        st.divider()
+        # --- ENSTRÜMAN METRİKLERİ  ---
+        onceki = df_p.iloc[-2] if len(df_p) > 1 else guncel
+        varlik_data = []
+        for e in enstrumanlar:
+            if guncel[e] > 0:
+                guncel_val = float(guncel[e]); onceki_val = float(onceki[e])
+                degisim = guncel_val - onceki_val
+                yuzde = (degisim / onceki_val * 100) if onceki_val > 0 else 0.0
+                varlik_data.append({'Cins': e, 'Tutar': guncel_val, 'Delta': f"{yuzde:.2f}%", 'Icon': enstruman_bilgi[e]})
+        
+        df_v = pd.DataFrame(varlik_data).sort_values(by="Tutar", ascending=False)
+        cols = st.columns(4)
+        for i, (idx, row) in enumerate(df_v.iterrows()):
+            cols[i % 4].metric(f"{row['Icon']} {row['Cins']}", f"{int(row['Tutar']):,.0f}".replace(",", "."), delta=row['Delta'])
+
+        st.divider()
+        sub_tab1, sub_tab2 = st.tabs(["🥧 Varlık Dağılımı", "📈 Gelişim Analizi"])
+        with sub_tab1:
+            df_v['Etiket'] = df_v['Icon'] + " " + df_v['Cins']
+            fig_p = px.pie(df_v, values='Tutar', names='Etiket', hole=0.4, color_discrete_sequence=px.colors.qualitative.Pastel)
+            st.plotly_chart(fig_p, use_container_width=True)
+        with sub_tab2:
+            df_p['tarih_tr'] = df_p['tarih'].dt.day.astype(str) + " " + df_p['tarih'].dt.month.map(TR_AYLAR_TAM)
+            fig_l = px.line(df_p, x='tarih', y='Toplam', markers=True, title="Toplam Varlık Seyri")
+            fig_l.update_xaxes(tickvals=df_p['tarih'], ticktext=[f"{d.day} {TR_AYLAR_KISA.get(d.strftime('%b'))}" for d in df_p['tarih']])
+            st.plotly_chart(fig_l, use_container_width=True)
 
 # --- SEKME 2: GELİRLER ---
 with tab_gelir:
