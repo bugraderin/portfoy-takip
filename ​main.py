@@ -25,16 +25,30 @@ try:
 except Exception as e:
     st.error(f"Bağlantı Hatası: {e}"); st.stop()
 
-# --- CSS Düzenlemeleri ---
+# --- ÖZEL CSS VE METRİK FONKSİYONU ---
 st.markdown("""
 <style>
     [data-testid="stMetricValue"] { font-size: 18px !important; }
     div[data-testid="stMetric"] { background-color: #f8f9fa; padding: 10px; border-radius: 8px; border: 1px solid #eee; }
+    
+    /* Özel Mavi Metrik Stili */
+    .neutral-metric { color: #007bff; font-weight: bold; font-size: 14px; margin-top: -10px; }
+    
     input::-webkit-outer-spin-button, input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
     input[type=number] { -moz-appearance: textfield; }
     [data-testid="stNumberInputStepUp"], [data-testid="stNumberInputStepDown"] { display: none !important; }
 </style>
 """, unsafe_allow_html=True)
+
+def custom_metric(label, value, delta_val, is_enstrument=False):
+    """Değişim yoksa mavi tire gösteren özel metrik fonksiyonu"""
+    if abs(delta_val) < 0.01:
+        st.metric(label, value)
+        st.markdown(f'<p class="neutral-metric">— 0.00%</p>', unsafe_allow_html=True)
+    else:
+        # Enstrümanlar için sadece yüzde, genel analiz için tutar + yüzde gösterir
+        delta_text = f"{delta_val:.2f}%"
+        st.metric(label, value, delta=delta_text)
 
 def get_son_bakiye_ve_limit():
     try:
@@ -61,7 +75,7 @@ with tab_portfoy:
         except: son_kayitlar = {e: 0.0 for e in enstrumanlar}
 
         with st.form("p_form", clear_on_submit=True):
-            p_in = {e: st.number_input(f"{enstruman_bilgi[e]} {e}", min_value=0.0, value=None, format="%.f", help=f"Son Değer: {int(float(son_kayitlar.get(e,0))):,.0f} TL") for e in enstrumanlar}
+            p_in = {e: st.number_input(f"{enstruman_bilgi[e]} {e}", min_value=0.0, value=None, format="%.f") for e in enstrumanlar}
             if st.form_submit_button("🚀 Kaydet"):
                 yeni_satir = [datetime.now().strftime('%Y-%m-%d')] + [p_in[e] if p_in[e] is not None else float(son_kayitlar.get(e, 0)) for e in enstrumanlar]
                 bugun = datetime.now().strftime('%Y-%m-%d')
@@ -85,7 +99,6 @@ with tab_portfoy:
         st.metric("Toplam Varlık (TL)", f"{int(guncel['Toplam']):,.0f}".replace(",", "."))
 
         st.write("### ⏱️ Değişim Analizi")
-        # Haftalık (7 Gün) periyodu buraya eklendi
         periyotlar = {"1 Gün": 1, "1 Hafta": 7, "1 Ay": 30, "3 Ay": 90, "6 Ay": 180, "1 Yıl": 365}
         secilen_periyot = st.selectbox("Analiz Periyodu Seçin", list(periyotlar.keys()))
         hedef_tarih = guncel['tarih'] - timedelta(days=periyotlar[secilen_periyot])
@@ -101,14 +114,9 @@ with tab_portfoy:
                 label_text = f"{secilen_periyot} Ortalamasına Göre"
 
             if baz_deger > 0:
-                fark = guncel_deger - baz_deger
-                yuzde_deg = (fark / baz_deger) * 100
-                
-                # --- %0 DURUMUNDA MAVİ/NÖTR VE OKSUZ GÖSTERİM ---
-                if abs(yuzde_deg) < 0.01:
-                    st.metric(label_text, f"{int(guncel_deger):,.0f} TL".replace(",", "."), delta="0.00%", delta_color="off")
-                else:
-                    st.metric(label_text, f"{int(fark):,.0f} TL".replace(",", "."), delta=f"{yuzde_deg:.2f}%")
+                yuzde_deg = ((guncel_deger - baz_deger) / baz_deger) * 100
+                display_val = f"{int(guncel_deger - baz_deger):,.0f} TL".replace(",", ".") if secilen_periyot == "1 Gün" else f"{int(guncel_deger):,.0f} TL".replace(",", ".")
+                custom_metric(label_text, display_val, yuzde_deg)
 
         st.divider()
         # --- ENSTRÜMAN METRİKLERİ ---
@@ -118,16 +126,13 @@ with tab_portfoy:
             if guncel[e] > 0:
                 g_val = float(guncel[e]); o_val = float(onceki[e])
                 yuzde = ((g_val - o_val) / o_val * 100) if o_val > 0 else 0.0
-                varlik_data.append({'Cins': e, 'Tutar': g_val, 'Delta_Val': yuzde, 'Icon': enstruman_bilgi[e]})
+                varlik_data.append({'Cins': e, 'Tutar': g_val, 'Delta': yuzde, 'Icon': enstruman_bilgi[e]})
         
         df_v = pd.DataFrame(varlik_data).sort_values(by="Tutar", ascending=False)
         cols_m = st.columns(4)
         for i, (idx, row) in enumerate(df_v.iterrows()):
-            # Enstrüman Bazlı %0 Kontrolü
-            if abs(row['Delta_Val']) < 0.01:
-                cols_m[i % 4].metric(f"{row['Icon']} {row['Cins']}", f"{int(row['Tutar']):,.0f}".replace(",", "."), delta="0.00%", delta_color="off")
-            else:
-                cols_m[i % 4].metric(f"{row['Icon']} {row['Cins']}", f"{int(row['Tutar']):,.0f}".replace(",", "."), delta=f"{row['Delta_Val']:.2f}%")
+            with cols_m[i % 4]:
+                custom_metric(f"{row['Icon']} {row['Cins']}", f"{int(row['Tutar']):,.0f}".replace(",", "."), row['Delta'], is_enstrument=True)
 
         st.divider()
         sub_tab1, sub_tab2 = st.tabs(["🥧 Varlık Dağılımı", "📈 Gelişim Analizi"])
@@ -139,41 +144,30 @@ with tab_portfoy:
             fig_p_line = px.line(df_p_plot, x='tarih', y='Toplam', markers=True, title="Toplam Varlık Seyri")
             st.plotly_chart(fig_p_line, use_container_width=True)
 
-# --- SEKME 2: GELİRLER ---
+# --- GELİRLER/GİDERLER/BÜTÇE (AYNI KALDI) ---
 with tab_gelir:
     st.subheader("💵 Gelir Yönetimi")
     with st.form("g_form", clear_on_submit=True):
-        c1, c2, c3 = st.columns(3)
-        m = c1.number_input("Maaş", min_value=0)
-        p = c2.number_input("Prim & Promosyon", min_value=0)
-        y = c3.number_input("Yatırımlar", min_value=0)
+        c1, c2, c3 = st.columns(3); m = c1.number_input("Maaş", min_value=0); p = c2.number_input("Prim & Promosyon", min_value=0); y = c3.number_input("Yatırımlar", min_value=0)
         if st.form_submit_button("Geliri Kaydet"):
             toplam = (m or 0) + (p or 0) + (y or 0)
-            ws_gelir.append_row([datetime.now().strftime('%Y-%m-%d'), m or 0, p or 0, y or 0, toplam])
-            st.success("Gelir eklendi!"); st.rerun()
+            ws_gelir.append_row([datetime.now().strftime('%Y-%m-%d'), m or 0, p or 0, y or 0, toplam]); st.rerun()
 
-# --- SEKME 3: GİDERLER ---
 with tab_gider:
     kalan_bakiye, limit = get_son_bakiye_ve_limit()
     st.info(f"💰 Güncel Kalan Bütçe: **{int(kalan_bakiye):,.0f} TL**")
     gider_ikonlari = {"Genel Giderler": "📦", "Market": "🛒", "Kira": "🏠", "Aidat": "🏢", "Kredi Kartı": "💳", "Kredi": "🏦", "Eğitim": "🎓", "Araba": "🚗", "Seyahat": "✈️", "Sağlık": "🏥", "Çocuk": "👶", "Toplu Taşıma": "🚌"}
     with st.form("gi_form", clear_on_submit=True):
-        cols = st.columns(3)
-        inputs = {isim: cols[i % 3].number_input(f"{ikon} {isim}", min_value=0, value=None) for i, (isim, ikon) in enumerate(gider_ikonlari.items())}
+        cols = st.columns(3); inputs = {isim: cols[i % 3].number_input(f"{ikon} {isim}", min_value=0, value=None) for i, (isim, ikon) in enumerate(gider_ikonlari.items())}
         if st.form_submit_button("✅ Harcamayı Kaydet"):
             toplam_h = sum([v or 0 for v in inputs.values()])
             if toplam_h > 0:
-                yeni_kalan = kalan_bakiye - toplam_h
                 ws_gider.append_row([datetime.now().strftime('%Y-%m-%d')] + [inputs[k] or 0 for k in gider_ikonlari.keys()], value_input_option='RAW')
-                ws_ayrilan.append_row([datetime.now().strftime('%Y-%m-%d'), limit, yeni_kalan], value_input_option='RAW')
-                st.success(f"Kaydedildi! Kalan: {int(yeni_kalan)} TL"); st.rerun()
+                ws_ayrilan.append_row([datetime.now().strftime('%Y-%m-%d'), limit, kalan_bakiye - toplam_h], value_input_option='RAW'); st.rerun()
 
-# --- SEKME 4: BÜTÇE ---
 with tab_ayrilan:
-    st.subheader("🛡️ Bütçe Ekleme")
-    kalan_bakiye, mevcut_limit = get_son_bakiye_ve_limit()
+    st.subheader("🛡️ Bütçe Ekleme"); kalan_bakiye, mevcut_limit = get_son_bakiye_ve_limit()
     with st.form("b_form"):
         yeni_eklenecek = st.number_input("Eklenecek Tutar (TL)", min_value=0)
         if st.form_submit_button("Bakiyeye Ekle"):
-            ws_ayrilan.append_row([datetime.now().strftime('%Y-%m-%d'), yeni_eklenecek, kalan_bakiye + yeni_eklenecek])
-            st.success("Bakiye güncellendi!"); st.rerun()
+            ws_ayrilan.append_row([datetime.now().strftime('%Y-%m-%d'), yeni_eklenecek, kalan_bakiye + yeni_eklenecek]); st.rerun()
