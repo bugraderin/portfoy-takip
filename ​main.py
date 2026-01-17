@@ -85,7 +85,8 @@ with tab_portfoy:
         st.metric("Toplam Varlık (TL)", f"{int(guncel['Toplam']):,.0f}".replace(",", "."))
 
         st.write("### ⏱️ Değişim Analizi")
-        periyotlar = {"1 Gün": 1, "1 Ay": 30, "3 Ay": 90, "6 Ay": 180, "1 Yıl": 365}
+        # Haftalık (7 Gün) periyodu buraya eklendi
+        periyotlar = {"1 Gün": 1, "1 Hafta": 7, "1 Ay": 30, "3 Ay": 90, "6 Ay": 180, "1 Yıl": 365}
         secilen_periyot = st.selectbox("Analiz Periyodu Seçin", list(periyotlar.keys()))
         hedef_tarih = guncel['tarih'] - timedelta(days=periyotlar[secilen_periyot])
         
@@ -103,9 +104,9 @@ with tab_portfoy:
                 fark = guncel_deger - baz_deger
                 yuzde_deg = (fark / baz_deger) * 100
                 
-                # --- Nötr Değişim Kontrolü ---
+                # --- %0 DURUMUNDA MAVİ/NÖTR VE OKSUZ GÖSTERİM ---
                 if abs(yuzde_deg) < 0.01:
-                    st.metric(label_text, f"{int(guncel_deger):,.0f} TL".replace(",", "."), delta="Değişim Yok (0.00%)", delta_color="off")
+                    st.metric(label_text, f"{int(guncel_deger):,.0f} TL".replace(",", "."), delta="0.00%", delta_color="off")
                 else:
                     st.metric(label_text, f"{int(fark):,.0f} TL".replace(",", "."), delta=f"{yuzde_deg:.2f}%")
 
@@ -122,9 +123,9 @@ with tab_portfoy:
         df_v = pd.DataFrame(varlik_data).sort_values(by="Tutar", ascending=False)
         cols_m = st.columns(4)
         for i, (idx, row) in enumerate(df_v.iterrows()):
-            # Enstrüman Bazlı Nötr Kontrolü
+            # Enstrüman Bazlı %0 Kontrolü
             if abs(row['Delta_Val']) < 0.01:
-                cols_m[i % 4].metric(f"{row['Icon']} {row['Cins']}", f"{int(row['Tutar']):,.0f}".replace(",", "."), delta="Değişim Yok", delta_color="off")
+                cols_m[i % 4].metric(f"{row['Icon']} {row['Cins']}", f"{int(row['Tutar']):,.0f}".replace(",", "."), delta="0.00%", delta_color="off")
             else:
                 cols_m[i % 4].metric(f"{row['Icon']} {row['Cins']}", f"{int(row['Tutar']):,.0f}".replace(",", "."), delta=f"{row['Delta_Val']:.2f}%")
 
