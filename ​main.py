@@ -14,8 +14,9 @@ def get_gc():
     creds = Credentials.from_service_account_info(st.secrets["gcp_service_account"], scopes=scope)
     return gspread.authorize(creds)
 
-@st.cache_data(ttl=300)
-def get_data_cached(sheet_name):
+# Veri_Giris için cache süresini 10 saniyeye indiriyoruz ki güncellemeler anlık gelsin
+@st.cache_data(ttl=10) 
+def get_live_data(sheet_name):
     try:
         gc = get_gc()
         sh = gc.open("portfoyum")
@@ -23,87 +24,76 @@ def get_data_cached(sheet_name):
         data = ws.get_all_values()
         if len(data) > 0:
             headers = [str(h).strip() for h in data[0]]
-            df = pd.DataFrame(data[1:], columns=headers)
-            return df
+            return pd.DataFrame(data[1:], columns=headers)
         return pd.DataFrame()
-    except Exception as e:
-        st.error(f"{sheet_name} okunamadı: {e}")
+    except:
         return pd.DataFrame()
+
+# Sabit listeler (Fon_Listesi vb.) için 5 dakika cache devam edebilir
+@st.cache_data(ttl=300)
+def get_static_data(sheet_name):
+    return get_live_data(sheet_name) 
 
 def write_to_sheet(sheet_name, row):
     gc = get_gc()
     sh = gc.open("portfoyum")
     ws = sh.worksheet(sheet_name)
     ws.append_row(row)
-    st.cache_data.clear()
+    st.cache_data.clear() # Tüm cache'i temizle ki yeni veri anında görünsün
 
 # --- 2. SEKMELER ---
 tab_ana, tab_fon_v2 = st.tabs(["📊 Genel Durum", "🚀 Portföy V2"])
 
-with tab_ana:
-    st.subheader("Varlık Güncelleme")
-    # Varlık giriş formu (Varlik_Miktarlari sayfasına yazar)
-    with st.form("v_form"):
-        c1, c2, c3, c4, c5 = st.columns(5)
-        v_altin = c1.number_input("Altın", min_value=0.0)
-        v_doviz = c2.number_input("Döviz", min_value=0.0)
-        v_hisse = c3.number_input("Hisse", min_value=0.0)
-        v_kripto = c4.number_input("Kripto", min_value=0.0)
-        v_mevduat = c5.number_input("Mevduat", min_value=0.0)
-        
-        if st.form_submit_button("Varlıkları Kaydet"):
-            write_to_sheet("Varlik_Miktarlari", [datetime.now().strftime('%d.%m.%Y'), v_altin, v_doviz, v_hisse, v_kripto, v_mevduat])
-            st.success("Varlıklar kaydedildi!")
-            st.rerun()
-
 with tab_fon_v2:
-    st.subheader("Fon Portföy Girişi")
-    df_l = get_data_cached("Fon_Listesi")
+    st.subheader("🚀 Detaylı Fon Alımı")
+    
+    # 1. Verileri tazele butonu (Opsiyonel ama hayat kurtarır)
+    if st.button("🔄 Verileri Yenile / Fiyatları Kontrol Et"):
+        st.cache_data.clear()
+        st.rerun()
+
+    df_l = get_static_data("Fon_Listesi")
     
     if not df_l.empty:
-        # Başlık isimlerinin 'Fon Kodu' ve 'Fon Adı' olduğundan emin olun
         f_opts = [f"{r['Fon Kodu']} - {r['Fon Adı']}" for _, r in df_l.iterrows()]
-        sec_f = st.selectbox("Fon Seçiniz:", options=f_opts, index=None)
+        sec_f = st.selectbox("Fon Seç:", options=f_opts, index=None)
         
         if sec_f:
             kod = sec_f.split(" - ")[0].strip()
             ad = sec_f.split(" - ")[1].strip()
             
             c1, c2 = st.columns(2)
-            src = c1.radio("Fiyat Kaynağı:", ["Tefas", "Befas"])
-            lot = c2.number_input("Lot Miktarı:", min_value=0.0, step=0.01)
+            src = c1.radio("Kaynak:", ["Tefas", "Befas"], horizontal=True)
+            lot = c2.number_input("Lot:", min_value=0.0, step=1.0, format="%.2f")
             
-            # --- YENİ YATAY YAPIYA GÖRE FİYAT ÇEKME ---
+            # Güncel fiyatı kontrol et
             p_sheet = "TefasFonVerileri" if src == "Tefas" else "BefasFonVerileri"
-            df_p = get_data_cached(p_sheet)
+            df_p = get_live_data(p_sheet)
             
             fiyat = 0.0
-            # HATA BURADAYDI: Artık 'Fon Kodu' diye bir sütun yok, Kodlar başlığın kendisi!
             if not df_p.empty and kod in df_p.columns:
-                # En son satırdaki (güncel) fiyatı al
-                raw_price = str(df_p[kod].iloc[-1]).strip().replace(',', '.')
                 try:
-                    fiyat = float(raw_price) if raw_price else 0.0
+                    # En son satırdaki fiyatı al
+                    raw_val = str(df_p[kod].iloc[-1]).replace(',', '.')
+                    fiyat = float(raw_val)
                 except: fiyat = 0.0
-                
-                if fiyat > 0:
-                    st.info(f"💡 {kod} Güncel Fiyatı: {fiyat} TL | Toplam: {lot*fiyat:,.2f} TL")
-                else:
-                    st.warning("⚠️ Fiyat 0 görünüyor, Apps Script güncelleyecektir.")
-            else:
-                st.warning(f"⚠️ {kod} kodu henüz {p_sheet} sayfasında sütun olarak açılmamış.")
 
-            if st.button("PORTFÖYE EKLE"):
-                # Apps Script'in beklediği Veri_Giris başlıkları: 
-                # Tarih, Kod, Ad, Lot, Fiyat, Toplam, Kaynak
+            if fiyat > 0:
+                st.success(f"✅ Güncel Fiyat: {fiyat} TL | Toplam Değer: {lot*fiyat:,.2f} TL")
+            else:
+                st.info("ℹ️ Bu fonun fiyatı henüz sistemde yok. Kayıt sonrası Apps Script tarafından güncellenecektir.")
+
+            if st.button("KAYDET", use_container_width=True):
+                # Apps Script'in beklediği formatta yaz
                 tarih_str = datetime.now().strftime('%d.%m.%Y')
                 row = [tarih_str, kod, ad, lot, fiyat, lot*fiyat, src]
-                
                 write_to_sheet("Veri_Giris", row)
-                st.success(f"{kod} başarıyla eklendi!")
-                time.sleep(1)
+                st.balloons()
                 st.rerun()
 
     st.divider()
-    st.subheader("Son İşlemler")
-    st.dataframe(get_data_cached("Veri_Giris"), use_container_width=True)
+    st.markdown("### 📋 Son Fon İşlemleri (Veri_Giris)")
+    # Burada her zaman canlı veriyi gösteriyoruz
+    df_history = get_live_data("Veri_Giris")
+    if not df_history.empty:
+        st.dataframe(df_history, use_container_width=True)
