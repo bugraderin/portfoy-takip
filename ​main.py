@@ -18,25 +18,35 @@ try:
     client = get_sheets_client()
     spreadsheet = client.open("portfoyum")
     
+    # Tanımladığın Sayfa İsimleri
     ws_v_miktar = spreadsheet.worksheet("Varlik_Miktarlari")
     ws_fon_listesi = spreadsheet.worksheet("Fon_Listesi")
     ws_veri_giris = spreadsheet.worksheet("Veri_Giris")
     ws_tefas = spreadsheet.worksheet("TefasFonVerileri")
     ws_befas = spreadsheet.worksheet("BefasFonVerileri")
+    
+    # Detay Sayfaları (Gelecekteki işlemler için hazır)
+    ws_altin = spreadsheet.worksheet("Altin")
+    ws_doviz = spreadsheet.worksheet("Doviz")
+    ws_hisse = spreadsheet.worksheet("HisseSenedi")
+    ws_mevduat = spreadsheet.worksheet("Mevduat")
+    ws_kripto = spreadsheet.worksheet("Kripto")
+    
 except Exception as e:
     st.error(f"Bağlantı Hatası: {e}")
     st.stop()
 
 def get_data(ws):
     try:
-        time.sleep(0.3)
+        time.sleep(0.3) # API Kotasını korumak için
         data = ws.get_all_values()
         if len(data) > 1:
             df = pd.DataFrame(data[1:], columns=data[0])
             df.columns = [c.strip() for c in df.columns]
             return df
         return pd.DataFrame()
-    except: return pd.DataFrame()
+    except:
+        return pd.DataFrame()
 
 # --- 2. SEKMELER ---
 tab_ana, tab_fon_v2 = st.tabs(["📊 Genel Durum", "🚀 Portföy V2"])
@@ -54,9 +64,10 @@ with tab_ana:
         
         if st.form_submit_button("Verileri Kaydet"):
             ws_v_miktar.append_row([datetime.now().strftime('%Y-%m-%d'), v_altin, v_doviz, v_hisse, v_kripto, v_mevduat])
+            st.success("Varlıklar Varlik_Miktarlari sayfasına kaydedildi.")
             st.rerun()
 
-# --- SEKME 2: PORTFÖY V2 (DETAYLI KAYIT) ---
+# --- SEKME 2: PORTFÖY V2 (FON KAYIT) ---
 with tab_fon_v2:
     st.subheader("Fon Portföy Girişi")
     
@@ -77,28 +88,39 @@ with tab_fon_v2:
             df_p = get_data(ws_price_target)
             f_match = df_p[df_p['Fon Kodu'] == kod] if not df_p.empty else pd.DataFrame()
             
+            # --- Hata Alınan Bölüm (Tamir Edildi) ---
             fiyat = 0.0
             if not f_match.empty:
-                fiyat = float(str(f_match.iloc[0]['Son Fiyat']).replace(',', '.'))
-                st.info(f"Güncel {src} Fiyatı: {fiyat} TL | Toplam Değer: {lot*fiyat:,.2f} TL")
+                raw_price = str(f_match.iloc[0]['Son Fiyat']).strip().replace(',', '.')
+                # Sayı kontrolü: Boş değilse ve geçerli formatta ise float'a çevir
+                try:
+                    if raw_price:
+                        fiyat = float(raw_price)
+                        st.info(f"💡 Güncel {src} Fiyatı: {fiyat} TL | Toplam Değer: {lot*fiyat:,.2f} TL")
+                    else:
+                        st.warning(f"⚠️ {kod} için fiyat hücresi boş. 0.0 kabul edildi.")
+                except ValueError:
+                    st.error(f"⚠️ '{raw_price}' değeri sayıya çevrilemiyor! Lütfen {src} sayfasını kontrol et.")
             else:
-                st.warning(f"Fiyat bulunamadı. Fon kodu {src} listesine otomatik eklenecek.")
+                st.warning(f"Fiyat bulunamadı. Kaydedince {src} listesine eklenecek.")
 
             if st.button("KAYDET", use_container_width=True):
-                # 1. Veri_Giris sayfasına ana kaydı yap
+                # 1. Veri_Giris sayfasına kayıt
                 ws_veri_giris.append_row([
                     datetime.now().strftime('%Y-%m-%d'), 
                     kod, ad, lot, fiyat, lot*fiyat, src
                 ])
                 
-                # 2. Eğer fiyat listesinde yoksa, kodu ilgili fiyat sayfasına ekle (Befas/Tefas)
+                # 2. Fiyat listesinde yoksa kodu ekle
                 if f_match.empty:
-                    ws_price_target.append_row([kod, 0]) # 0 olarak eklenir, Apps Script günceller
+                    ws_price_target.append_row([kod, 0])
                 
-                st.success(f"{kod} kaydı yapıldı ve {src} fiyat listesi kontrol edildi.")
+                st.success(f"{kod} başarıyla kaydedildi.")
                 time.sleep(1)
                 st.rerun()
 
     st.divider()
     st.subheader("Veri_Giris Kayıtları")
-    st.dataframe(get_data(ws_veri_giris), use_container_width=True)
+    df_history = get_data(ws_veri_giris)
+    if not df_history.empty:
+        st.dataframe(df_history, use_container_width=True)
