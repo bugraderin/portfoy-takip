@@ -8,15 +8,13 @@ import time
 # --- 1. AYARLAR & BAĞLANTI ---
 st.set_page_config(page_title="Finansal Portföy Takibi", layout="wide")
 
-# Google Bağlantısını bir kez kurup saklıyoruz
 @st.cache_resource
 def get_gc():
     scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
     creds = Credentials.from_service_account_info(st.secrets["gcp_service_account"], scopes=scope)
     return gspread.authorize(creds)
 
-# VERİ OKUMAYI CACHE'E ALIYORUZ (Kotanın baş düşmanı burasıdır)
-@st.cache_data(ttl=300) # 5 Dakika boyunca Google'a sorma, kendi hafızandan oku
+@st.cache_data(ttl=300)
 def get_data_from_sheet(sheet_name):
     try:
         gc = get_gc()
@@ -29,21 +27,16 @@ def get_data_from_sheet(sheet_name):
             return df
         return pd.DataFrame()
     except Exception as e:
-        # Kota hatası geldiğinde kullanıcıyı uyar ama uygulamayı çökertme
         if "429" in str(e):
-            st.warning("⚠️ Google Kota Sınırı: Lütfen 2-3 dakika bekleyip sayfayı yenileyin.")
-        else:
-            st.error(f"Hata ({sheet_name}): {e}")
+            st.warning("⚠️ Google Kota Sınırı: Lütfen 1-2 dakika bekleyip sayfayı yenileyin.")
         return pd.DataFrame()
 
-# VERİ YAZMA FONKSİYONU (Yazarken Cache kullanılmaz)
 def write_to_sheet(sheet_name, row):
     try:
         gc = get_gc()
         sh = gc.open("portfoyum")
         ws = sh.worksheet(sheet_name)
         ws.append_row(row)
-        # Veri değiştiği için cache'i temizle ki güncel hali gelsin
         st.cache_data.clear()
         return True
     except Exception as e:
@@ -53,6 +46,7 @@ def write_to_sheet(sheet_name, row):
 # --- 2. SEKMELER ---
 tab_ana, tab_fon_v2 = st.tabs(["📊 Genel Durum", "🚀 Portföy V2"])
 
+# --- SEKME 1: GENEL DURUM ---
 with tab_ana:
     st.subheader("Varlık Güncelleme")
     with st.form("v_form", clear_on_submit=True):
@@ -64,12 +58,13 @@ with tab_ana:
         v_mevduat = c5.number_input("Mevduat", min_value=0.0)
         
         if st.form_submit_button("Varlıkları Kaydet"):
-            success = write_to_sheet("Varlik_Miktarlari", [datetime.now().strftime('%Y-%m-%d'), v_altin, v_doviz, v_hisse, v_kripto, v_mevduat])
-            if success:
-                st.success("Kaydedildi! Veriler güncelleniyor...")
+            row = [datetime.now().strftime('%Y-%m-%d'), v_altin, v_doviz, v_hisse, v_kripto, v_mevduat]
+            if write_to_sheet("Varlik_Miktarlari", row):
+                st.success("Kaydedildi!")
                 time.sleep(1)
                 st.rerun()
 
+# --- SEKME 2: PORTFÖY V2 (YENİ SÜTUN YAPISINA UYGUN) ---
 with tab_fon_v2:
     st.subheader("Fon Portföy Girişi")
     df_l = get_data_from_sheet("Fon_Listesi")
@@ -86,24 +81,35 @@ with tab_fon_v2:
             
             p_sheet = "TefasFonVerileri" if src == "Tefas" else "BefasFonVerileri"
             df_p = get_data_from_sheet(p_sheet)
+            
+            # Yeni yapıda (Tarih, Fon Kodu, Fon Adı, Son Fiyat) olduğu için Fon Kodu sütunundan eşleştiriyoruz
             f_match = df_p[df_p['Fon Kodu'] == kod] if not df_p.empty else pd.DataFrame()
             
             fiyat = 0.0
             if not f_match.empty:
                 try:
-                    fiyat = float(str(f_match.iloc[0]['Son Fiyat']).replace(',', '.'))
+                    # 'Son Fiyat' başlığını kullanarak veriyi alıyoruz
+                    raw_price = str(f_match.iloc[-1]['Son Fiyat']).strip().replace(',', '.')
+                    fiyat = float(raw_price) if raw_price else 0.0
                     st.info(f"💰 Birim Fiyat: {fiyat} TL | Toplam: {lot*fiyat:,.2f} TL")
-                except: pass
+                except:
+                    st.warning("Fiyat sütunu okunamadı, formatı kontrol edin.")
 
             if st.button("PORTFÖYE EKLE"):
-                row = [datetime.now().strftime('%Y-%m-%d'), kod, ad, lot, fiyat, lot*fiyat, src]
-                if write_to_sheet("Veri_Giris", row):
+                # 1. Veri_Giris'e ana işlem kaydı
+                row_main = [datetime.now().strftime('%Y-%m-%d'), kod, ad, lot, fiyat, lot*fiyat, src]
+                if write_to_sheet("Veri_Giris", row_main):
+                    
+                    # 2. Eğer fiyat sayfasında fon yoksa, yeni yapıya göre (Tarih, Kod, Ad, Fiyat) ekle
                     if f_match.empty:
-                        write_to_sheet(p_sheet, [kod, "", 0])
+                        # [Tarih, Fon Kodu, Fon Adı, Son Fiyat]
+                        row_price = [datetime.now().strftime('%Y-%m-%d'), kod, ad, 0]
+                        write_to_sheet(p_sheet, row_price)
+                    
                     st.success("İşlem Başarılı!")
                     time.sleep(1)
                     st.rerun()
 
     st.divider()
-    st.subheader("Son İşlemler")
+    st.subheader("Son Fon İşlemleri")
     st.dataframe(get_data_from_sheet("Veri_Giris"), use_container_width=True)
