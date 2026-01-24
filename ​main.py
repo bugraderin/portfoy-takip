@@ -6,14 +6,13 @@ from datetime import datetime, timedelta
 import plotly.express as px
 
 # --- SAYFA AYARLARI ---
-# Bu komut her zaman en üstte (importlardan hemen sonra) ve tek başına olmalıdır.
 st.set_page_config(page_title="Finansal Takip", layout="wide")
 
 # Türkçe Ay Sözlükleri
-TR_AYLAR_KISA = {
-    'Jan': 'Oca', 'Feb': 'Şub', 'Mar': 'Mar', 'Apr': 'Nis', 'May': 'May', 'Jun': 'Haz',
-    'Jul': 'Tem', 'Aug': 'Ağu', 'Sep': 'Eyl', 'Oct': 'Eki', 'Nov': 'Kas', 'Dec': 'Ara'
-}
+TR_AYLAR_KISA = {'Jan': 'Oca', 'Feb': 'Şub', 'Mar': 'Mar', 'Apr': 'Nis', 'May': 'May', 'Jun': 'Haz',
+                'Jul': 'Tem', 'Aug': 'Ağu', 'Sep': 'Eyl', 'Oct': 'Eki', 'Nov': 'Kas', 'Dec': 'Ara'}
+TR_AYLAR_TAM = {1: "Ocak", 2: "Şubat", 3: "Mart", 4: "Nisan", 5: "Mayıs", 6: "Haziran", 
+                7: "Temmuz", 8: "Ağustos", 9: "Eylül", 10: "Ekim", 11: "Kasım", 12: "Aralık"}
 
 # --- 1. GOOGLE SHEETS BAĞLANTISI ---
 scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
@@ -22,7 +21,7 @@ try:
     client = gspread.authorize(creds)
     spreadsheet = client.open("portfoyum")
     
-    # Standart Sekmeler
+    # Mevcut Sekmeler
     ws_portfoy = spreadsheet.worksheet("Veri Sayfası")
     ws_gelir = spreadsheet.worksheet("Gelirler")
     ws_gider = spreadsheet.worksheet("Giderler")
@@ -33,15 +32,17 @@ try:
     ws_veri_giris = spreadsheet.worksheet("Veri_Giris")
     ws_tefas_fiyat = spreadsheet.worksheet("TefasFonVerileri")
     ws_befas_fiyat = spreadsheet.worksheet("BefasFonVerileri")
+    
 except Exception as e:
-    st.error(f"Bağlantı Hatası: {e}")
-    st.stop()
+    st.error(f"Bağlantı Hatası: {e}"); st.stop()
 
 # --- CSS Düzenlemeleri ---
 st.markdown("""
 <style>
     [data-testid="stMetricValue"] { font-size: 18px !important; }
     div[data-testid="stMetric"] { background-color: #f8f9fa; padding: 10px; border-radius: 8px; border: 1px solid #eee; }
+    input::-webkit-outer-spin-button, input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+    input[type=number] { -moz-appearance: textfield; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -55,15 +56,13 @@ def get_son_bakiye_ve_limit():
     except: return 0.0, 0.0
 
 # --- SEKMELER ---
-tab_portfoy, tab_gelir, tab_gider, tab_ayrilan, tab_v2 = st.tabs([
-    "📊 Portföy", "💵 Gelirler", "💸 Giderler", "🛡️ Bütçe", "🚀 Portföy V2"
-])
+tab_portfoy, tab_gelir, tab_gider, tab_ayrilan, tab_v2 = st.tabs(["📊 Portföy", "💵 Gelirler", "💸 Giderler", "🛡️ Bütçe", "🚀 Portföy V2"])
 
 # --- SEKME 1: PORTFÖY ---
 with tab_portfoy:
     enstruman_bilgi = {'Hisse Senedi': '📈', 'Altın': '🟡', 'Gümüş': '⚪', 'Fon': '🏦', 'Döviz': '💵', 'Kripto': '₿', 'Mevduat': '💰', 'BES': '🛡️'}
     enstrumanlar = list(enstruman_bilgi.keys())
-    
+
     with st.sidebar:
         st.header("📥 Portföy Güncelle")
         try:
@@ -75,19 +74,34 @@ with tab_portfoy:
             p_in = {}
             for e in enstrumanlar:
                 son_val = float(son_kayitlar.get(e, 0))
-                p_in[e] = st.number_input(f"{enstruman_bilgi[e]} {e}", min_value=0.0, value=None, format="%.f")
+                p_in[e] = st.number_input(f"{enstruman_bilgi[e]} {e}", min_value=0.0, value=None, format="%.f", help=f"Son Değer: {int(son_val):,.0f} TL")
+
             if st.form_submit_button("🚀 Kaydet"):
-                yeni_satir = [datetime.now().strftime('%Y-%m-%d')] + [p_in[e] if p_in[e] is not None else float(son_kayitlar.get(e, 0)) for e in enstrumanlar]
+                yeni_satir = [datetime.now().strftime('%Y-%m-%d')]
+                for e in enstrumanlar:
+                    val = p_in[e] if p_in[e] is not None else float(son_kayitlar.get(e, 0))
+                    yeni_satir.append(val)
                 ws_portfoy.append_row(yeni_satir)
                 st.success("✅ Kaydedildi!"); st.rerun()
 
     data_p = ws_portfoy.get_all_records()
     if data_p:
         df_p = pd.DataFrame(data_p)
-        df_p['tarih'] = pd.to_datetime(df_p['tarih'])
+        df_p['tarih'] = pd.to_datetime(df_p['tarih'], errors='coerce')
+        df_p = df_p.dropna(subset=['tarih']).sort_values('tarih')
+        for col in enstrumanlar: df_p[col] = pd.to_numeric(df_p[col], errors='coerce').fillna(0)
         df_p['Toplam'] = df_p[enstrumanlar].sum(axis=1)
-        st.metric("Toplam Varlık (TL)", f"{int(df_p.iloc[-1]['Toplam']):,.0f}".replace(",", "."))
-        st.plotly_chart(px.line(df_p, x='tarih', y='Toplam', title="Varlık Seyri"), use_container_width=True)
+        
+        guncel = df_p.iloc[-1]
+        st.metric("Toplam Varlık (TL)", f"{int(guncel['Toplam']):,.0f}".replace(",", "."))
+
+        st.write("### ⏱️ Değişim Analizi")
+        periyotlar = {"1 Gün": 1, "1 Ay": 30, "3 Ay": 90, "1 Yıl": 365}
+        sec_per = st.selectbox("Analiz Periyodu", list(periyotlar.keys()))
+        
+        # Grafik ve metrik bölümleri...
+        fig_p_line = px.line(df_p, x='tarih', y='Toplam', markers=True, title="Toplam Varlık Seyri")
+        st.plotly_chart(fig_p_line, use_container_width=True)
 
 # --- SEKME 2: GELİRLER ---
 with tab_gelir:
@@ -96,85 +110,75 @@ with tab_gelir:
         c1, c2, c3 = st.columns(3)
         m = c1.number_input("Maaş", min_value=0)
         p = c2.number_input("Prim", min_value=0)
-        y = c3.number_input("Yatırım", min_value=0)
+        y = c3.number_input("Yatırımlar", min_value=0)
         if st.form_submit_button("Geliri Kaydet"):
             ws_gelir.append_row([datetime.now().strftime('%Y-%m-%d'), m, p, y, m+p+y])
-            st.success("Gelir eklendi!"); st.rerun()
+            st.rerun()
 
 # --- SEKME 3: GİDERLER ---
 with tab_gider:
     kalan_bakiye, limit = get_son_bakiye_ve_limit()
     st.info(f"💰 Güncel Kalan Bütçe: **{int(kalan_bakiye):,.0f} TL**")
-    gider_ikonlari = {"Market": "🛒", "Kira": "🏠", "Fatura": "⚡", "Kart": "💳", "Dışarıda Yemek": "🍽️"}
+    gider_ikonlari = {"Genel": "📦", "Market": "🛒", "Kira": "🏠", "Aidat": "🏢", "Kart": "💳"}
     with st.form("gi_form", clear_on_submit=True):
         cols = st.columns(len(gider_ikonlari))
         inputs = {isim: cols[i].number_input(f"{ikon} {isim}", min_value=0) for i, (isim, ikon) in enumerate(gider_ikonlari.items())}
         if st.form_submit_button("✅ Harcamayı Kaydet"):
-            toplam_h = sum(inputs.values())
+            toplam_h = sum([v or 0 for v in inputs.values()])
             ws_gider.append_row([datetime.now().strftime('%Y-%m-%d')] + list(inputs.values()))
             ws_ayrilan.append_row([datetime.now().strftime('%Y-%m-%d'), limit, kalan_bakiye - toplam_h])
-            st.success("Kaydedildi!"); st.rerun()
+            st.rerun()
 
 # --- SEKME 4: BÜTÇE ---
 with tab_ayrilan:
-    st.subheader("🛡️ Bütçe Yönetimi")
     kb, ml = get_son_bakiye_ve_limit()
-    ekle = st.number_input("Eklenecek Tutar (TL)", min_value=0)
+    st.write(f"Kalan: {int(kb)} TL")
+    yeni_ekle = st.number_input("Ekle", min_value=0)
     if st.button("Bakiyeye Ekle"):
-        ws_ayrilan.append_row([datetime.now().strftime('%Y-%m-%d'), ekle, kb + ekle])
-        st.success("Bakiye güncellendi!"); st.rerun()
+        ws_ayrilan.append_row([datetime.now().strftime('%Y-%m-%d'), yeni_ekle, kb + yeni_ekle])
+        st.rerun()
 
-# --- SEKME 5: PORTFÖY V2 ---
+# --- SEKME 5: PORTFÖY V2 (YENİ EKLEDİĞİMİZ) ---
 with tab_v2:
-    st.header("🚀 Gelişmiş Fon Takip Sistemi")
+    st.header("🚀 Portföy V2 - Akıllı Fon Takibi")
     try:
-        # Arama kutusu için fon listesini çek
-        df_fonlar = pd.DataFrame(ws_fon_listesi.get_all_records())
-        fon_secenekleri = [f"{row['Fon Kodu']} - {row['Fon Adı']}" for _, row in df_fonlar.iterrows()]
-        
-        secilen_full = st.selectbox("Fon Arayın:", options=fon_secenekleri, index=None, placeholder="Örn: VGA")
+        data_f = ws_fon_listesi.get_all_records()
+        df_f = pd.DataFrame(data_f)
+        options = [f"{r['Fon Kodu']} - {r['Fon Adı']}" for _, r in df_f.iterrows()]
+        secilen = st.selectbox("Fon Seçin:", options=options, index=None)
 
-        if secilen_full:
-            sec_kod = secilen_full.split(" - ")[0]
-            sec_ad = secilen_full.split(" - ")[1]
+        if secilen:
+            f_kod = secilen.split(" - ")[0]
+            f_ad = secilen.split(" - ")[1]
             
             c1, c2 = st.columns(2)
             with c1:
                 kaynak = st.radio("Fiyat Kaynağı:", ["Tefas", "Befas"])
                 ws_fiyat = ws_tefas_fiyat if kaynak == "Tefas" else ws_befas_fiyat
             with c2:
-                lot = st.number_input("Lot Miktarı:", min_value=0.0, step=0.01)
+                lot = st.number_input("Lot", min_value=0.0, step=0.01)
 
-            # Fiyat Kontrolü
-            fiyat_df = pd.DataFrame(ws_fiyat.get_all_records())
-            fon_fiyat_row = fiyat_df[fiyat_df['Fon Kodu'] == sec_kod]
-
-            if not fon_fiyat_row.empty:
-                fiyat = float(fon_fiyat_row.iloc[0]['Son Fiyat'])
+            # Fiyat Çekme
+            f_df = pd.DataFrame(ws_fiyat.get_all_records())
+            f_row = f_df[f_df['Fon Kodu'] == f_kod]
+            
+            if not f_row.empty:
+                fiyat = float(f_row.iloc[0]['Son Fiyat'])
                 tutar = lot * fiyat
-                st.metric(f"Anlık {kaynak} Fiyatı", f"{fiyat:.6f} TL")
+                st.metric(f"Birim Fiyat ({kaynak})", f"{fiyat:.6f} TL")
                 st.subheader(f"💰 Tutar: {tutar:,.2f} TL")
-                
                 if st.button("📥 Portföye Ekle"):
-                    ws_veri_giris.append_row([datetime.now().strftime("%Y-%m-%d"), sec_kod, sec_ad, lot, fiyat, tutar, kaynak])
-                    st.balloons(); st.success("Eklendi!"); st.rerun()
+                    ws_veri_giris.append_row([datetime.now().strftime("%Y-%m-%d"), f_kod, f_ad, lot, fiyat, tutar, kaynak])
+                    st.success("Kaydedildi!"); st.rerun()
             else:
-                st.warning("Bu fonun fiyatı henüz bu kaynakta yok.")
-                if st.button("➕ Fiyat Listesine Ekle"):
-                    ws_fiyat.append_row([sec_kod, 0])
-                    st.info("Kod eklendi, fiyat bekleniyor.")
+                st.warning("Fiyat yok!")
+                if st.button("Kodu Listeye Ekle"):
+                    ws_fiyat.append_row([f_kod, 0])
+                    st.rerun()
 
         st.divider()
-        st.subheader("🗑️ Kayıtlı Fonlarım")
-        v2_data = ws_veri_giris.get_all_records()
-        if v2_data:
-            df_v2 = pd.DataFrame(v2_data)
-            st.dataframe(df_v2, use_container_width=True)
-            
-            silinecek = st.selectbox("Silinecek Fonu Seçin:", df_v2['Kod'].unique())
-            if st.button("Seçili Fonu Sil"):
-                cell = ws_veri_giris.find(silinecek)
-                ws_veri_giris.delete_rows(cell.row)
-                st.success("Silindi!"); st.rerun()
+        st.subheader("📋 Kayıtlı Fon Detayları")
+        v2_df = pd.DataFrame(ws_veri_giris.get_all_records())
+        st.dataframe(v2_df, use_container_width=True)
     except Exception as e:
-        st.error(f"V2 Hatası: {e}")
+        st.error(f"Hata: {e}")
